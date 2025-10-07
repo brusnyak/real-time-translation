@@ -1,101 +1,90 @@
-import pyttsx3
 import numpy as np
 import sounddevice as sd
-import wave
 import os
 import threading
 import time
+import torch
+from TTS.api import TTS
+import pyttsx3 # Import pyttsx3 for fallback
+import wave # For pyttsx3 output handling
+import io
+from pydub import AudioSegment # Import pydub
 
 class TTSOutput:
-    def __init__(self, rate=150, volume=1.0):
+    def __init__(self, speaker_wav_path="tests/My test speech.m4a"):
         """
-        Initializes the pyttsx3 TTS engine.
-        :param rate: Speech rate (words per minute).
-        :param volume: Speech volume (0.0 to 1.0).
+        Initializes the Coqui XTTS v2 TTS model and pyttsx3 for fallback.
+        :param speaker_wav_path: Path to the audio file for voice cloning with XTTS v2.
         """
-        # Initialize pyttsx3 engine, explicitly trying 'espeak' driver for better WAV compatibility
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {self.device}")
+
+        # Initialize XTTS model
+        self.xtts_supported_languages = ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi']
+        self.tts_xtts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True if self.device == "cuda" else False)
+        print("Coqui XTTS v2 model initialized.")
+
+        # Convert speaker_wav_path to WAV if it's not already
+        self.xtts_speaker_wav_path = self._prepare_speaker_wav(speaker_wav_path)
+        if not os.path.exists(self.xtts_speaker_wav_path):
+            print(f"Warning: Prepared speaker WAV file not found at {self.xtts_speaker_wav_path}. XTTS v2 voice cloning may not work as expected.")
+
+        # Initialize pyttsx3 engine for fallback (e.g., for Slovak)
         try:
-            self.engine = pyttsx3.init('espeak')
-            print("pyttsx3 engine initialized with 'espeak' driver.")
+            self.tts_pyttsx3 = pyttsx3.init('espeak')
+            print("pyttsx3 engine initialized with 'espeak' driver for fallback.")
         except Exception as e:
             print(f"Warning: Failed to initialize pyttsx3 with 'espeak' driver: {e}. Falling back to default.")
             print("Please ensure 'espeak-ng' is installed on your system (e.g., 'brew install espeak-ng' on macOS, 'sudo apt-get install espeak-ng' on Debian/Ubuntu).")
-            self.engine = pyttsx3.init()
+            self.tts_pyttsx3 = pyttsx3.init()
             print("pyttsx3 engine initialized with default driver (fallback).")
-
-        self.engine.setProperty('rate', rate)
-        self.engine.setProperty('volume', volume)
-        self.voices = self.engine.getProperty('voices')
         
-        self.en_voice_id = None
+        self.tts_pyttsx3.setProperty('rate', 170) # Default rate
+        self.tts_pyttsx3.setProperty('volume', 1.0) # Default volume
+        self.pyttsx3_voices = self.tts_pyttsx3.getProperty('voices')
+
         self.sk_voice_id = None
-        for voice in self.voices:
-            if "en-us" in voice.languages: # Prioritize US English
-                self.en_voice_id = voice.id
-            elif "en" in voice.languages and not self.en_voice_id: # Fallback to general English
-                self.en_voice_id = voice.id
+        for voice in self.pyttsx3_voices:
             if "sk" in voice.languages:
                 self.sk_voice_id = voice.id
-            
-            if self.en_voice_id and self.sk_voice_id:
                 break
-
-        if not self.en_voice_id:
-            print("Warning: No suitable English voice found. Falling back to first available for English.")
-            for voice in self.voices:
-                if "en" in voice.languages:
-                    self.en_voice_id = voice.id
-                    break
-            if not self.en_voice_id and self.voices:
-                self.en_voice_id = self.voices[0].id # Absolute fallback
-
         if not self.sk_voice_id:
-            print("Warning: No suitable Slovak voice found. Falling back to first available for Slovak.")
-            for voice in self.voices:
-                if "sk" in voice.languages:
-                    self.sk_voice_id = voice.id
-                    break
-            if not self.sk_voice_id and self.voices:
-                self.sk_voice_id = self.voices[0].id # Absolute fallback
-
-        print(f"English voice set to: {self.en_voice_id}")
-        print(f"Slovak voice set to: {self.sk_voice_id}")
-        # Set initial voice (can be changed later based on target language)
+            print("Warning: No suitable Slovak voice found for pyttsx3. Falling back to first available.")
+            if self.pyttsx3_voices:
+                self.sk_voice_id = self.pyttsx3_voices[0].id
+        
         if self.sk_voice_id:
-            self.engine.setProperty('voice', self.sk_voice_id)
-        elif self.en_voice_id:
-            self.engine.setProperty('voice', self.en_voice_id)
+            self.tts_pyttsx3.setProperty('voice', self.sk_voice_id)
+            print(f"pyttsx3 Slovak voice set to: {self.sk_voice_id}")
         else:
-            print("No suitable English or Slovak voice found, using system default.")
-            if self.voices:
-                self.engine.setProperty('voice', self.voices[0].id) # Fallback to first available
-                print(f"Fallback voice set to: {self.voices[0].id}")
+            print("No suitable Slovak voice found for pyttsx3, using system default.")
 
-    def list_voices(self):
-        """Lists available voices on the system."""
-        print("Available voices:")
-        for i, voice in enumerate(self.voices):
-            print(f"{i}: ID={voice.id}, Name={voice.name}, Langs={voice.languages}, Gender={voice.gender}, Age={voice.age}")
+    def _prepare_speaker_wav(self, original_path: str) -> str:
+        """
+        Converts the speaker WAV file to a compatible WAV format for XTTS v2 if necessary.
+        Returns the path to the prepared WAV file.
+        """
+        base, ext = os.path.splitext(original_path)
+        if ext.lower() == ".wav":
+            return original_path # Already a WAV file
 
-    def set_voice(self, voice_id):
-        """Sets the TTS voice by ID."""
-        self.engine.setProperty('voice', voice_id)
-        print(f"Voice set to: {voice_id}")
+        # Convert to WAV
+        output_path = base + "_xtts_speaker.wav"
+        try:
+            audio = AudioSegment.from_file(original_path)
+            audio.export(output_path, format="wav")
+            print(f"Converted speaker WAV from {original_path} to {output_path} for XTTS v2.")
+            return output_path
+        except Exception as e:
+            print(f"Error converting speaker WAV for XTTS v2: {e}. Using original path, which may cause issues.")
+            return original_path
+
 
     def synthesize_and_play(self, text: str, lang="en"):
         """
-        Synthesizes text to speech and plays it directly.
-        Note: pyttsx3's `say` and `runAndWait` are blocking.
-        For non-blocking playback, we'll use get_audio_bytes and play with sounddevice.
+        Synthesizes text to speech and plays it directly, using XTTS v2 or pyttsx3.
         """
         print(f"Synthesizing and playing: '{text}' in language '{lang}'...")
-        
-        original_voice = self.engine.getProperty('voice')
-        if lang == "en" and self.en_voice_id:
-            self.engine.setProperty('voice', self.en_voice_id)
-        elif lang == "sk" and self.sk_voice_id:
-            self.engine.setProperty('voice', self.sk_voice_id)
-        
         try:
             audio_bytes, sample_rate = self.get_audio_bytes(text, lang)
             if audio_bytes:
@@ -104,36 +93,44 @@ class TTSOutput:
                 print("Playback started (non-blocking).")
         except Exception as e:
             print(f"Error during non-blocking playback: {e}")
-        finally:
-            self.engine.setProperty('voice', original_voice) # Restore original voice
 
-    def synthesize_to_file(self, text: str, filename="output_tts.wav", lang="en"):
+    def synthesize_to_numpy(self, text: str, lang="en") -> tuple[np.ndarray, int]:
         """
-        Synthesizes text to speech and saves it to a WAV file.
-        :param text: The text to synthesize.
-        :param filename: The output WAV file path.
-        :param lang: Language of the text (used for voice selection if implemented).
+        Synthesizes text to speech and returns a numpy array and sample rate, using XTTS v2 or pyttsx3.
         """
-        print(f"Synthesizing to file: '{text}' to '{filename}' in language '{lang}'...")
-        self.engine.save_to_file(text, filename)
-        self.engine.runAndWait()
-        print(f"Audio saved to {filename}")
-        return filename
+        if lang in self.xtts_supported_languages:
+            try:
+                print(f"Using XTTS v2 for language: {lang}")
+                wav = self.tts_xtts.tts(
+                    text=text,
+                    speaker_wav=self.xtts_speaker_wav_path, # Use the prepared WAV path
+                    language=lang
+                )
+                return np.array(wav), 24000 # XTTS v2 default sample rate
+            except Exception as e:
+                print(f"Error during XTTS v2 synthesis for {lang}: {e}. Falling back to pyttsx3.")
+                return self._synthesize_with_pyttsx3(text, lang)
+        else:
+            print(f"Language {lang} not supported by XTTS v2. Falling back to pyttsx3.")
+            return self._synthesize_with_pyttsx3(text, lang)
 
-    def get_audio_bytes(self, text: str, lang="en") -> tuple[bytes, int]:
+    def _synthesize_with_pyttsx3(self, text: str, lang="en") -> tuple[np.ndarray, int]:
         """
-        Synthesizes text to speech and returns raw audio bytes and sample rate.
-        This is a workaround as pyttsx3 doesn't directly expose audio buffers.
-        It saves to a temporary file and reads it back.
+        Internal method to synthesize text using pyttsx3.
         """
-        temp_filename = "temp_tts_output.wav"
-        self.engine.save_to_file(text, temp_filename)
-        self.engine.runAndWait() # Ensure the file is fully written
+        temp_filename = "temp_pyttsx3_output.wav"
+        original_voice = self.tts_pyttsx3.getProperty('voice')
+        
+        if lang == "sk" and self.sk_voice_id:
+            self.tts_pyttsx3.setProperty('voice', self.sk_voice_id)
+        # Add other pyttsx3 voice selections if needed for other languages
+        
+        self.tts_pyttsx3.save_to_file(text, temp_filename)
+        self.tts_pyttsx3.runAndWait()
         
         # Add a small delay to ensure file system sync
-        time.sleep(0.5) # Increased delay
+        time.sleep(0.5)
 
-        # Retry mechanism for reading the file
         max_retries = 5
         for i in range(max_retries):
             if os.path.exists(temp_filename):
@@ -141,45 +138,123 @@ class TTSOutput:
                     with wave.open(temp_filename, 'rb') as wf:
                         sample_rate = wf.getframerate()
                         audio_bytes = wf.readframes(wf.getnframes())
-                    os.remove(temp_filename) # Clean up temporary file
-                    return audio_bytes, sample_rate
+                    os.remove(temp_filename)
+                    audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                    self.tts_pyttsx3.setProperty('voice', original_voice) # Restore original voice
+                    return audio_array, sample_rate
                 except wave.Error as e:
                     print(f"Warning: Attempt {i+1}/{max_retries} to read WAV failed: {e}. Retrying...")
-                    time.sleep(0.2) # Small delay before retry
+                    time.sleep(0.2)
             else:
                 print(f"Warning: Attempt {i+1}/{max_retries}, file '{temp_filename}' not found. Retrying...")
-                time.sleep(0.2) # Small delay before retry
+                time.sleep(0.2)
         
-        raise FileNotFoundError(f"Failed to create or read temporary TTS file '{temp_filename}' after {max_retries} attempts.")
+        self.tts_pyttsx3.setProperty('voice', original_voice) # Restore original voice
+        raise FileNotFoundError(f"Failed to create or read temporary pyttsx3 file '{temp_filename}' after {max_retries} attempts.")
+
+
+    def synthesize_to_file(self, text: str, filename="output_tts.wav", lang="en"):
+        """
+        Synthesizes text to speech and saves it to a WAV file, using XTTS v2 or pyttsx3.
+        """
+        if lang in self.xtts_supported_languages:
+            print(f"Using XTTS v2 to save to file: '{text}' to '{filename}' in language '{lang}'...")
+            try:
+                self.tts_xtts.tts_to_file(
+                    text=text,
+                    speaker_wav=self.xtts_speaker_wav_path, # Use the prepared WAV path
+                    language=lang,
+                    file_path=filename
+                )
+                print(f"Audio saved to {filename} using XTTS v2.")
+                return filename
+            except Exception as e:
+                print(f"Error saving XTTS v2 audio to file for {lang}: {e}. Falling back to pyttsx3.")
+                return self._synthesize_to_file_pyttsx3(text, filename, lang)
+        else:
+            print(f"Language {lang} not supported by XTTS v2. Falling back to pyttsx3 to save to file.")
+            return self._synthesize_to_file_pyttsx3(text, filename, lang)
+
+    def _synthesize_to_file_pyttsx3(self, text: str, filename="output_tts.wav", lang="en"):
+        """
+        Internal method to synthesize text to file using pyttsx3.
+        """
+        original_voice = self.tts_pyttsx3.getProperty('voice')
+        if lang == "sk" and self.sk_voice_id:
+            self.tts_pyttsx3.setProperty('voice', self.sk_voice_id)
+        
+        self.tts_pyttsx3.save_to_file(text, filename)
+        self.tts_pyttsx3.runAndWait()
+        print(f"Audio saved to {filename} using pyttsx3.")
+        self.tts_pyttsx3.setProperty('voice', original_voice) # Restore original voice
+        return filename
+
+    def get_audio_bytes(self, text: str, lang="en") -> tuple[bytes, int]:
+        """
+        Synthesizes text to speech and returns raw audio bytes and sample rate, using XTTS v2 or pyttsx3.
+        """
+        audio_array, sample_rate = self.synthesize_to_numpy(text, lang)
+        if audio_array is not None:
+            # Convert numpy array (float32) to bytes (int16)
+            audio_bytes = (audio_array * 32767).astype(np.int16).tobytes()
+            return audio_bytes, sample_rate
+        return b"", 0
 
 if __name__ == "__main__":
-    tts_model = TTSOutput()
-    tts_model.list_voices()
+    # Ensure you have a speaker_wav file for cloning, e.g., "tests/My test speech.m4a"
+    tts_model = TTSOutput(speaker_wav_path="tests/My test speech.m4a")
 
-    # Example: Synthesize and play a sentence (now non-blocking)
-    tts_model.synthesize_and_play("Hello, this is a test of the pyttsx3 library.", lang="en")
-    time.sleep(3) # Allow time for playback
+    # Example: Synthesize and play a sentence in English (XTTS v2)
+    tts_model.synthesize_and_play("Hello, this is a test of the Coqui XTTS v2 library in English.", lang="en")
+    time.sleep(5)
 
-    # Example: Synthesize to a file
-    output_file = tts_model.synthesize_to_file("This is a test sentence saved to a file.", "pyttsx3_output.wav", lang="en")
+    # Example: Synthesize and play a sentence in Czech (XTTS v2)
+    tts_model.synthesize_and_play("Ahoj, toto je test Coqui XTTS v2 knižnice v češtine.", lang="cs")
+    time.sleep(5)
+
+    # Example: Synthesize and play a sentence in Slovak (pyttsx3 fallback)
+    tts_model.synthesize_and_play("Ahoj, toto je test pyttsx3 knižnice v slovenčine.", lang="sk")
+    time.sleep(5)
+
+    # Example: Synthesize to a file in English (XTTS v2)
+    output_file_en = tts_model.synthesize_to_file("This is a test sentence saved to a file using XTTS v2 in English.", "xtts_output_en.wav", lang="en")
     
+    # Example: Synthesize to a file in Slovak (pyttsx3 fallback)
+    output_file_sk = tts_model.synthesize_to_file("Toto je testovacia veta uložená do súboru pomocou pyttsx3 v slovenčine.", "pyttsx3_output_sk.wav", lang="sk")
+
     # Example: Get audio bytes (demonstrates how to get raw audio for streaming)
     try:
-        audio_bytes, sample_rate = tts_model.get_audio_bytes("This is audio as bytes.", lang="en")
-        print(f"Received {len(audio_bytes)} bytes of audio data with sample rate {sample_rate}.")
+        audio_bytes_en, sample_rate_en = tts_model.get_audio_bytes("This is audio as bytes from XTTS v2 in English.", lang="en")
+        print(f"Received {len(audio_bytes_en)} bytes of English audio data with sample rate {sample_rate_en}.")
         
-        # Play the bytes_output.wav using AudioInput class
+        audio_bytes_sk, sample_rate_sk = tts_model.get_audio_bytes("Toto je zvuk ako bajty z pyttsx3 v slovenčine.", lang="sk")
+        print(f"Received {len(audio_bytes_sk)} bytes of Slovak audio data with sample rate {sample_rate_sk}.")
+
+        # Play the bytes_output.wav using AudioInput class (assuming it can handle raw bytes or a temp file)
         from audio_input import AudioInput
         audio_manager = AudioInput()
-        # Temporarily save bytes to a file for AudioInput to play
-        temp_play_file = "temp_playback.wav"
-        with wave.open(temp_play_file, 'wb') as wf:
-            wf.setnchannels(1) # Assuming mono
-            wf.setsampwidth(2) # Assuming 16-bit
-            wf.setframerate(sample_rate) # Use the actual sample rate
-            wf.writeframes(audio_bytes)
-        audio_manager.play_audio(temp_play_file)
-        os.remove(temp_play_file)
+
+        # Play English bytes
+        temp_play_file_en = "temp_playback_xtts_en.wav"
+        audio_array_int16_en = np.frombuffer(audio_bytes_en, dtype=np.int16)
+        with wave.open(temp_play_file_en, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate_en)
+            wf.writeframes(audio_array_int16_en.tobytes())
+        audio_manager.play_audio(temp_play_file_en)
+        os.remove(temp_play_file_en)
+
+        # Play Slovak bytes
+        temp_play_file_sk = "temp_playback_pyttsx3_sk.wav"
+        audio_array_int16_sk = np.frombuffer(audio_bytes_sk, dtype=np.int16)
+        with wave.open(temp_play_file_sk, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate_sk)
+            wf.writeframes(audio_array_int16_sk.tobytes())
+        audio_manager.play_audio(temp_play_file_sk)
+        os.remove(temp_play_file_sk)
 
     except Exception as e:
-        print(f"Error getting audio bytes: {e}")
+        print(f"Error getting audio bytes or playing: {e}")

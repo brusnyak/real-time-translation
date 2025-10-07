@@ -5,6 +5,8 @@ import time
 import wave
 from pydub import AudioSegment
 import io
+import asyncio # Import asyncio
+import pysbd # For sentence segmentation
 
 from audio_input import AudioInput
 from stt_whisper import STTWhisper
@@ -14,7 +16,7 @@ from tts_output import TTSOutput
 class MainPipeline:
     def __init__(self, stt_model_size="base", stt_device="cpu",
                  src_lang="en", tgt_lang="sk",
-                 tts_rate=150, tts_volume=1.0):
+                 speaker_wav_path="tests/My test speech.m4a"):
         """
         Initializes the main pipeline components.
         """
@@ -22,7 +24,29 @@ class MainPipeline:
         self.stt_whisper = STTWhisper(model_size=stt_model_size, device=stt_device)
         self.translator_en_sk = Translator(src_lang="en", tgt_lang="sk")
         self.translator_sk_en = Translator(src_lang="sk", tgt_lang="en")
-        self.tts_output = TTSOutput(rate=tts_rate, volume=tts_volume)
+        self.translator_en_cs = Translator(src_lang="en", tgt_lang="cs") # Add English to Czech translator
+        self.tts_output = TTSOutput(speaker_wav_path=speaker_wav_path)
+        self.test_run_id = self._get_next_test_id() # Sequential ID for each test run
+
+    def _get_next_test_id(self):
+        """Determines the next sequential test ID based on existing research/test_N directories."""
+        existing_test_dirs = [d for d in os.listdir("research") if d.startswith("test_") and os.path.isdir(os.path.join("research", d))]
+        if not existing_test_dirs:
+            return 1
+        
+        # Extract numbers from directory names (e.g., "test_5" -> 5)
+        test_numbers = []
+        for d in existing_test_dirs:
+            try:
+                num_str = d.split('_')[1]
+                test_numbers.append(int(num_str))
+            except (IndexError, ValueError):
+                continue # Ignore malformed directory names
+        
+        if test_numbers:
+            return max(test_numbers) + 1
+        else:
+            return 1 # Fallback if no valid test numbers found
 
     async def run_offline_demo(self, audio_file_path="test_recording.wav", duration=5):
         """
@@ -67,25 +91,71 @@ class MainPipeline:
         transcribed_text = self.stt_whisper.transcribe_audio(audio_data, language=detected_lang, task="transcribe")
         print(f"Original ({detected_lang}): {transcribed_text}")
 
-        # 5. Translate text
-        print("Translating text...")
+        # 5. Translate text and prepare for TTS
+        print("Translating text and preparing for TTS...")
+        
+        target_lang_code = None
+        tts_target_lang_code = None
+        translated_text = ""
+        translated_text_for_tts = ""
+
         if detected_lang == "en":
-            translated_text = await self.translator_en_sk.translate_text(transcribed_text)
-            target_lang_code = "sk"
+            # Directly translate English to Czech for both display and TTS
+            # to leverage XTTS v2 voice cloning, as Czech is linguistically similar to Slovak.
+            translated_text = await self.translator_en_cs.translate_text(transcribed_text)
+            target_lang_code = "cs" # Display as Czech
+            translated_text_for_tts = translated_text
+            tts_target_lang_code = "cs" # Synthesize in Czech
+            print(f"Note: Directly translating English to Czech for both display and TTS to leverage XTTS v2 voice cloning.")
         elif detected_lang == "sk":
+            # If source is Slovak, translate to English
             translated_text = await self.translator_sk_en.translate_text(transcribed_text)
             target_lang_code = "en"
+            translated_text_for_tts = translated_text
+            tts_target_lang_code = "en"
         else:
             print(f"Unsupported language for translation: {detected_lang}. Skipping translation.")
             translated_text = transcribed_text
+            translated_text_for_tts = transcribed_text
             target_lang_code = detected_lang # Fallback
+            tts_target_lang_code = detected_lang # Fallback
         
         print(f"Translated ({target_lang_code}): {translated_text}")
+        # No need for 'Translated for TTS' if target_lang_code == tts_target_lang_code
 
         # 6. Synthesize and play translated speech
         print("Synthesizing and playing translated speech...")
         translated_audio_temp_file = "temp_translated_audio.wav"
-        self.tts_output.synthesize_to_file(translated_text, filename=translated_audio_temp_file, lang=target_lang_code)
+        
+        # Perform sentence segmentation on the *translated text for TTS* before synthesis
+        # Use Slovak for segmentation if TTS target is Czech, as pysbd supports Slovak but not Czech.
+        segmentation_lang = "sk" if tts_target_lang_code == "cs" else tts_target_lang_code
+        seg = pysbd.Segmenter(language=segmentation_lang, clean=False)
+        sentences_for_tts = seg.segment(translated_text_for_tts)
+
+        # Synthesize each sentence separately to avoid noise at the end of each sentence
+        # and potentially improve overall quality.
+        # This will also help XTTS v2 process smaller, more coherent chunks.
+        for i, sentence_for_tts in enumerate(sentences_for_tts):
+            if not sentence_for_tts.strip():
+                continue
+            print(f"Synthesizing sentence {i+1}/{len(sentences_for_tts)}: '{sentence_for_tts}'")
+            self.tts_output.synthesize_to_file(sentence_for_tts, filename=f"temp_translated_audio_part_{i}.wav", lang=tts_target_lang_code)
+        
+        # Combine the synthesized audio parts into a single file for playback and comparison
+        combined_audio = AudioSegment.empty()
+        for i in range(len(sentences_for_tts)):
+            part_file = f"temp_translated_audio_part_{i}.wav"
+            if os.path.exists(part_file):
+                combined_audio += AudioSegment.from_wav(part_file)
+                os.remove(part_file)
+        
+        if combined_audio:
+            combined_audio.export(translated_audio_temp_file, format="wav")
+            print(f"Combined synthesized audio saved to {translated_audio_temp_file}")
+        else:
+            print("No audio synthesized for playback.")
+
         
         # Play the translated audio from the saved file
         from audio_input import AudioInput
@@ -93,6 +163,16 @@ class MainPipeline:
         audio_manager.play_audio(translated_audio_temp_file)
         
         print("--- Offline Demo Finished ---")
+
+        # Perform audio comparison
+        from audio_comparison import AudioComparator
+        comparator = AudioComparator()
+        comparator.compare_audio_signals(original_audio_temp_file, translated_audio_temp_file, output_dir=f"research/test_{self.test_run_id}")
+        
+        # Temporary: Do not clean up temporary files immediately for debugging and manual inspection
+        # os.remove(original_audio_temp_file)
+        # os.remove(translated_audio_temp_file)
+        print("Temporary audio files (temp_original_audio.wav, temp_translated_audio.wav) retained for inspection.")
 
     async def run_realtime_pipeline(self, src_lang="en", tgt_lang="sk", chunk_size=1024, sample_rate=16000):
         """
@@ -136,9 +216,35 @@ class MainPipeline:
                             transcribed_text = self.stt_whisper.transcribe_audio(audio_array, language=src_lang, task="transcribe")
                             if transcribed_text.strip(): # Only process if there's actual speech
                                 print(f"[{src_lang}] {transcribed_text}")
-                                translated_text = await translator.translate_text(transcribed_text)
-                                print(f"[{tgt_lang}] {translated_text}")
-                                self.tts_output.synthesize_and_play(translated_text, lang=tgt_lang)
+                                
+                                # Translate entire chunk first
+                                translated_text = ""
+                                tts_target_lang_code = tgt_lang
+
+                                if src_lang == "en" and tgt_lang == "sk":
+                                    # Directly translate English to Czech for both display and TTS
+                                    translated_text = await self.translator_en_cs.translate_text(transcribed_text)
+                                    tts_target_lang_code = "cs"
+                                    translated_text_for_tts = translated_text
+                                    print(f"Note: Directly translating English to Czech for both display and TTS to leverage XTTS v2 voice cloning.")
+                                else: # sk to en
+                                    translated_text = await self.translator_sk_en.translate_text(transcribed_text)
+                                    translated_text_for_tts = translated_text
+                                    tts_target_lang_code = "en" # Assuming English is always supported by XTTS v2
+
+                                print(f"[{tts_target_lang_code}] {translated_text}")
+                                # No need for 'Translated for TTS' if target_lang_code == tts_target_lang_code
+
+                                # Sentence segmentation for TTS output
+                                # Use Slovak for segmentation if TTS target is Czech, as pysbd supports Slovak but not Czech.
+                                segmentation_lang = "sk" if tts_target_lang_code == "cs" else tts_target_lang_code
+                                seg = pysbd.Segmenter(language=segmentation_lang, clean=False)
+                                sentences_for_tts = seg.segment(translated_text_for_tts)
+
+                                for sentence_for_tts in sentences_for_tts:
+                                    if not sentence_for_tts.strip():
+                                        continue
+                                    self.tts_output.synthesize_and_play(sentence_for_tts, lang=tts_target_lang_code)
                         else:
                             # If language changes, or is not the source language, just print detection
                             # print(f"Detected language: {detected_lang}, not {src_lang}. Skipping translation.")
@@ -160,10 +266,10 @@ if __name__ == "__main__":
         print("Please ensure 'tests/My test speech.m4a' exists.")
         exit()
 
-    pipeline = MainPipeline(stt_model_size="medium", src_lang="en", tgt_lang="sk", tts_rate=170, tts_volume=1.0)
+    pipeline = MainPipeline(stt_model_size="medium", src_lang="en", tgt_lang="sk", speaker_wav_path=test_speech_file)
 
-    print("\n--- Available TTS Voices ---")
-    pipeline.tts_output.list_voices()
+    print("\n--- Initializing TTS Model ---")
+    # No need to list voices for XTTS v2 as it uses voice cloning
     print("----------------------------\n")
     
     # Run offline demo using the provided test speech file

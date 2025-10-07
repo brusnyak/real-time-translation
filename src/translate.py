@@ -21,8 +21,11 @@ class Translator:
         if not isinstance(text, str):
             raise TypeError("Input text must be a string.")
 
+        # Temporary workaround for specific translation issue
+        processed_text = text.replace("Slavak", "slovenčiny")
+        
         try:
-            result = await self.translator.translate(text, src=self.src_lang, dest=self.tgt_lang)
+            result = await self.translator.translate(processed_text, src=self.src_lang, dest=self.tgt_lang)
             return result.text
         except Exception as e:
             print(f"Error during Google Translate API call: {e}")

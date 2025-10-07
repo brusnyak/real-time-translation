@@ -27,11 +27,12 @@ class AudioComparator:
         ax.set_ylabel("Amplitude")
         ax.grid(True)
 
-    def compare_audio_signals(self, original_file: str, translated_file: str):
+    def compare_audio_signals(self, original_file: str, translated_file: str, output_dir: str = "research"):
         """
         Loads and compares two audio files by plotting their waveforms.
         :param original_file: Path to the original audio file.
         :param translated_file: Path to the translated audio file.
+        :param output_dir: Directory to save the comparison plots.
         """
         original_data, original_sr = self.load_audio(original_file)
         translated_data, translated_sr = self.load_audio(translated_file)
@@ -53,7 +54,28 @@ class AudioComparator:
         self.plot_waveform(original_data, original_sr, "Original Audio Waveform", axes[0])
         self.plot_waveform(translated_data, translated_sr, "Translated Audio Waveform", axes[1])
         plt.tight_layout()
-        plt.show()
+        
+        # Save plots to files
+        os.makedirs(output_dir, exist_ok=True) # Ensure the directory exists
+
+        original_plot_file = os.path.join(output_dir, "original_audio_waveform.png")
+        translated_plot_file = os.path.join(output_dir, "translated_audio_waveform.png")
+        
+        # Save individual plots
+        fig_original, ax_original = plt.subplots(figsize=(12, 4))
+        self.plot_waveform(original_data, original_sr, "Original Audio Waveform", ax_original)
+        fig_original.savefig(original_plot_file)
+        plt.close(fig_original)
+        print(f"Original audio waveform plot saved to {original_plot_file}")
+        
+        fig_translated, ax_translated = plt.subplots(figsize=(12, 4))
+        self.plot_waveform(translated_data, translated_sr, "Translated Audio Waveform", ax_translated)
+        fig_translated.savefig(translated_plot_file)
+        plt.close(fig_translated)
+        print(f"Translated audio waveform plot saved to {translated_plot_file}")
+
+        # Close the combined figure if it was created (it's not needed anymore)
+        plt.close(fig)
 
         print("--- Comparison Finished ---")
 
