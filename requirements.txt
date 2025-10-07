@@ -1,0 +1,29 @@
+# Core components
+sounddevice
+numpy==2.2.6
+torch
+transformers==4.55.4
+optimum
+accelerate
+sentencepiece
+datasets
+librosa==0.11.0
+scipy==1.15.3
+streamlit
+pyaudio # For audio capture and playback
+
+# For Whisper (if using local model)
+openai-whisper
+sacremoses # Recommended for transformers
+
+# For pyttsx3
+pyttsx3
+
+# For Google Translate
+googletrans==4.0.2
+
+# For Jitsi integration (if needed for local testing/dev)
+# selenium # Example for browser automation, might not be needed for direct API interaction
+
+# Development and testing
+pytest

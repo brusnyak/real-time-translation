@@ -1,0 +1,261 @@
+Let’s build a full blueprint for your Bachelor’s thesis project:
+🎓 “Real-Time Speech Translation in Online Conferences”
+so you know exactly what to research, build, and deliver.
+
+🧩 PART 1 — Research To-Do (Before Implementation)
+
+Your goal here is to collect and analyze existing tools + methods so you can justify your design to the supervisor.
+
+🔹 A. Research Objectives
+
+Find answers to:
+
+Speech-to-Text (STT):
+
+Which ASR (Automatic Speech Recognition) models handle English ↔ Slovak best?
+
+Compare: OpenAI Whisper, Vosk, Google Speech API, Azure STT, Mozilla DeepSpeech.
+
+Machine Translation (MT):
+
+What’s the best low-latency translator for your target languages?
+
+Compare: Google Translate API, DeepL API, Helsinki-NLP (Opus-MT).
+
+Text-to-Speech (TTS):
+
+Compare: Coqui TTS, ElevenLabs, eSpeak, Google TTS.
+
+Real-time streaming + pipeline management:
+
+Can the pipeline process data in chunks (streaming ASR → MT → TTS)?
+
+Latency per module?
+
+Integration options:
+
+Which open-source conferencing systems (Jitsi, Janus, Mediasoup) allow audio injection or subtitle overlays?
+
+🔹 B. Research Tasks
+Step	Task	Output
+1	Analyze existing tools & APIs (STT, MT, TTS)	Comparison table
+2	Measure their latency and quality on sample audio	Report (accuracy, delay, CPU use)
+3	Study integration options (Jitsi SDK, WebRTC streams, OBS audio routing)	Integration strategy
+4	Define final architecture (components, data flow, delay target)	Diagram + short explanation
+5	Write a Research Summary Report (2–3 pages)	For supervisor approval
+⚙️ PART 2 — Development Pipeline (Implementation Phase)
+
+Once the research is approved, this becomes your README + workflow for building the prototype.
+
+🧱 1. System Overview
+
+Goal:
+Translate live speech between English ↔ Slovak in near real time during an online meeting.
+
+Architecture:
+
+Audio Input (mic / stream)
+      ↓
+Speech-to-Text (Whisper)
+      ↓
+Text Translation (DeepL / Opus-MT)
+      ↓
+Text-to-Speech (Coqui / ElevenLabs)
+      ↓
+Output Audio / Subtitle Display
+
+🧩 2. Tech Stack
+Component	Tool / Library	Language
+Audio capture & playback	PyAudio / sounddevice	Python
+Speech-to-Text	Whisper API or local Whisper model	Python
+Translation	DeepL API / Opus-MT (HuggingFace)	Python
+Text-to-Speech	Coqui TTS or pyttsx3	Python
+UI / display	Streamlit / Electron / Web app with Flask	Python + JS
+Real-time management	asyncio / threading / WebSockets	Python
+Conference Integration	Jitsi Meet SDK (Web API overlay)	JS/HTML frontend
+🪜 3. Development Stages
+Phase 1 — Local Pipeline Prototype
+
+Goal: Build a working speech → translated text → speech pipeline locally.
+
+Steps:
+
+Record sample audio.
+
+Transcribe using Whisper.
+
+Translate using API.
+
+Convert translated text back to speech.
+
+Measure total delay (target < 2–3 seconds).
+
+Phase 2 — Real-Time Audio Stream
+
+Goal: Process live microphone input in chunks.
+
+Use sounddevice or PyAudio for streaming.
+
+Feed short buffers to Whisper for incremental transcription.
+
+Stream translated text or generated voice.
+
+Phase 3 — User Interface
+
+Goal: Provide a way to:
+
+Start/stop translation.
+
+Show subtitles in real time.
+
+(Optional) Play synthesized translated speech.
+
+Frameworks:
+
+Streamlit (simple, fast)
+
+or Electron/HTML overlay for embedding in Jitsi.
+
+Phase 4 — Integration & Testing
+
+Goal: Integrate your translator into a conference simulation.
+
+Option 1: Use Jitsi Meet or Janus with custom overlay.
+
+Option 2: Use OBS or WebRTC test room to simulate multi-user call.
+
+Test:
+
+End-to-end latency
+
+Accuracy (qualitative)
+
+CPU/GPU performance
+
+📁 4. Repository Structure (README layout)
+/real-time-speech-translation
+│
+├── /research
+│   ├── asr_comparison.md
+│   ├── translation_comparison.md
+│   ├── tts_comparison.md
+│   └── architecture_diagram.png
+│
+├── /src
+│   ├── audio_input.py
+│   ├── stt_whisper.py
+│   ├── translate.py
+│   ├── tts_output.py
+│   ├── main_pipeline.py
+│   └── ui_app.py
+│
+├── /tests
+│   ├── latency_test.py
+│   ├── accuracy_test.py
+│   └── integration_test.py
+│
+├── requirements.txt
+├── README.md
+└── thesis_report_outline.md
+
+📘 README.md (template content)
+
+Title: Real-Time Speech Translation in Online Conference
+Description: Prototype system translating English ↔ Slovak speech in real time using modern AI models.
+
+🧠 Features
+
+Live speech-to-text transcription (Whisper)
+
+Neural translation (DeepL / Opus-MT)
+
+Real-time subtitle display
+
+(Optional) Speech synthesis of translation
+
+Designed for integration into online conference tools
+
+⚙️ Architecture
+
+Include diagram + module explanations (as above)
+
+💻 Installation
+git clone https://github.com/username/real-time-translation
+cd real-time-translation
+pip install -r requirements.txt
+
+🚀 Usage
+python main_pipeline.py
+
+🧪 Testing
+python tests/latency_test.py
+
+📊 Results
+
+Average delay: ~1.8s
+
+STT accuracy: 94% (Whisper medium)
+
+Translation accuracy: good for English ↔ Slovak short sentences
+
+🎓 PART 3 — Research Paper / Presentation
+
+To present to your supervisor and later for your thesis defense:
+
+Paper Outline (5–7 pages)
+
+Introduction: Problem, motivation (language barriers in online meetings)
+
+Theoretical background:
+
+Speech recognition, translation, synthesis
+
+Real-time streaming challenges
+
+State of the art:
+
+Overview of Whisper, DeepL, Coqui, etc.
+
+System design:
+
+Architecture, chosen tools, diagram
+
+Implementation:
+
+Code structure, algorithms
+
+Evaluation:
+
+Latency, accuracy, possible improvements
+
+Conclusion & future work:
+
+Adding new languages, better TTS voice quality, full integration into real platforms.
+
+Presentation (for supervisor / defense)
+
+7–10 slides:
+
+Title + your name
+
+Problem & motivation
+
+Current technologies overview
+
+Proposed architecture
+
+Demo / screenshots
+
+Results & evaluation
+
+Next steps / possible applications
+
+✅ Next Step
+
+You can now:
+
+Begin research tasks (make a comparison table of ASR/MT/TTS tools).
+
+Present that to your supervisor for confirmation.
+
+Then start coding the Phase 1 prototype (offline version).
