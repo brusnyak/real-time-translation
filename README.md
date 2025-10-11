@@ -1,33 +1,33 @@
-# Real-Time Speech Translation in Online Conference
+# Real-Time Speech Translation for Online Conferences
 
-## Description
-Prototype system translating English ↔ Slovak speech in real time using modern AI models.
+Prototype for near–real-time English ↔ Slovak speech translation with voice cloning. See `plan.md` for the detailed roadmap.
 
-## Features
-*   Live speech-to-text transcription (Whisper)
-*   Neural translation (Helsinki-NLP Opus-MT)
-*   Real-time subtitle display (Streamlit)
-*   Speech synthesis of translation (pyttsx3)
-*   Designed for integration into online conference tools (Jitsi Meet)
+## Quick start
 
-## Architecture
-(Diagram + module explanations will be added here after research phase)
-
-## Installation
 ```bash
-git clone https://github.com/brusnyak/real-time-translation.git
-cd real-time-translation
 pip install -r requirements.txt
 ```
 
-## Usage
-To run the offline demo, which records 5 seconds of audio, processes it through the STT -> MT -> TTS pipeline, and then plays the original and translated audio:
-```bash
-python src/main_pipeline.py
-```
+### Offline file validation (recommended first)
 
-## Testing
-(Testing instructions will be updated for real-time and integration testing in later phases.)
+Place audio in `tests/` (e.g., `tests/My test speech.m4a`) and a speaker reference (e.g., `tests/My test speech_xtts_speaker.wav`). Then run the offline pipeline (to be implemented in `src/main_pipeline.py`).
 
-## Results
-(Results will be added here after implementation and testing)
+### Live loop
+
+Run the real-time loop from `src/main_pipeline.py` (mic → STT → MT → TTS → playback). Streamlit UI for controls/subtitles will be added in `src/ui_app.py`.
+
+## Architecture
+
+- Python backend: Whisper (STT) → Opus-MT (MT) → XTTS v2 (TTS)
+- UI: Streamlit; Jitsi IFrame for subtitles (audio injection is a stretch goal)
+
+## Tech
+
+- STT: `openai-whisper`
+- MT: `transformers` with Helsinki-NLP Opus-MT
+- TTS: `TTS` (XTTS v2)
+- IO/UI: `sounddevice`/`pyaudio`, `streamlit`
+
+## Important note (XTTS v2)
+
+XTTS v2 lacks native Slovak voice cloning. For Slovak output we synthesize using Czech in XTTS v2 to achieve better voice similarity. This is intentional and documented in `plan.md`.

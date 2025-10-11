@@ -1,0 +1,14 @@
+Source Language: en
+Target Language: cs
+Transcribed Text (en):  In this experiment, the system converts spoken English into text, translates it into  Slovak and then synthesizes it back into speech.  The process involves three stages, speech recognition, machine translation and text to speech.  Each model introduces a small delay, so we will measure the overall latency.  The main objective is to achieve natural communication despite language barriers.
+Translated Text (cs): V tomto experimentu systém přeměňuje mluvenou angličtinu na text, přeloží ji do slovenštiny a pak ji syntetizuje zpět do řeči. Proces zahrnuje tři fáze, rozpoznávání řeči, strojový překlad a text do řeči. Každý model představuje malé zpoždění, takže budeme měřit celkovou latenci. Hlavním cílem je dosáhnout přirozené komunikace navzdory jazykovým bariérám.
+
+--- Timing Information ---
+Total Pipeline Time: 122.699s
+Startup time (load models + init): 75.136s
+  - Whisper load: 1.857s
+  - MT load: 8.577s
+  - TTS load (global): 64.702s
+STT time: 0.585s
+MT time: 4.361s
+TTS time (generation + post-processing): 115.665s

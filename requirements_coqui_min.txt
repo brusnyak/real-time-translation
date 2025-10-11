@@ -1,0 +1,47 @@
+# Python 3.10 environment (macOS Apple Silicon M1 Pro)
+
+# === Core ML libs (PyTorch + audio) ===
+torch==2.6.0
+torchaudio==2.6.0
+
+# === Speech-to-Text ===
+faster-whisper==1.2.0
+ctranslate2==4.6.0
+
+# === Machine Translation (with ONNX optimization) ===
+transformers==4.42.0
+sentencepiece==0.1.99
+sacremoses
+optimum>=1.16.0          # For ONNX export and quantization
+onnxruntime>=1.16.0      # Standard ONNX runtime
+
+# For M1 Mac Metal acceleration (optional but recommended):
+# Install separately via conda:
+# conda install -c conda-forge onnxruntime-silicon
+# OR use standard onnxruntime which auto-detects Metal
+
+# === Text-to-Speech ===
+TTS==0.22.0
+setuptools<81            # Address pkg_resources deprecation
+
+# === Audio processing ===
+numpy==1.22.0
+scipy==1.11.2
+sounddevice
+soundfile
+pydub
+librosa==0.10.0          # Downgraded for numpy 1.22.0 compatibility
+python-dotenv
+numba==0.58.1
+ffmpeg
+
+# === Optional optimization/runtime ===
+accelerate               # For optimized inference
+huggingface-hub          # For model management
+
+# === Utilities ===
+streamlit                # For UI (optional)
+googletrans==4.0.2       # Fallback translation (optional)
+
+# === Development ===
+pytest

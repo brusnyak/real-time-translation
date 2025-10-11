@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Speech Translation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🌐 Live Speech Translation</h1>
+            <p>Real-time translation with voice cloning</p>
+        </div>
+
+        <!-- Main content: Two columns -->
+        <div class="content">
+            <!-- Left Column: Transcription -->
+            <div class="column transcription-column">
+                <div class="column-header">
+                    <h2>📝 Transcription</h2>
+                    <span class="language-badge">English</span>
+                </div>
+                <div class="transcript-box" id="transcriptionBox">
+                    <p class="placeholder">Waiting for speech...</p>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="divider"></div>
+
+            <!-- Right Column: Translation -->
+            <div class="column translation-column">
+                <div class="column-header">
+                    <h2>🗣️ Translation</h2>
+                    <select id="languageSelect" class="language-select" title="Select Target Language">
+                        <option value="sk">Slovak (Slovenčina)</option>
+                        <option value="cs">Czech (Čeština)</option>
+                        <option value="de">German (Deutsch)</option>
+                        <option value="fr">French (Français)</option>
+                        <option value="es">Spanish (Español)</option>
+                        <option value="it">Italian (Italiano)</option>
+                    </select>
+                </div>
+                <div class="transcript-box" id="translationBox">
+                    <p class="placeholder">Translation will appear here...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="metrics">
+            <div class="metric">
+                <span class="metric-label">STT:</span>
+                <span class="metric-value" id="sttTime">0.0s</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">MT:</span>
+                <span class="metric-value" id="mtTime">0.0s</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">TTS:</span>
+                <span class="metric-value" id="ttsTime">0.0s</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Total:</span>
+                <span class="metric-value" id="totalTime">0.0s</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Status:</span>
+                <span class="metric-value" id="statusText">Disconnected</span>
+            </div>
+        </div>
+
+        <!-- Footer with controls -->
+        <div class="footer">
+            <button id="initBtn" class="btn btn-init">Initialize</button>
+            <button id="startBtn" class="btn btn-start" disabled>Start</button>
+            <button id="stopBtn" class="btn btn-stop" disabled>Stop</button>
+            <div class="status-indicator">
+                <span id="statusIndicator" class="indicator off"></span>
+                <span id="statusLabel">Ready</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

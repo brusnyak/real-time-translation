@@ -25,3 +25,6 @@ Thumbs.db
 # Audio files
 *.wav
 
+# Generated research outputs and temporary files
+research/test_*/
+update*.txt

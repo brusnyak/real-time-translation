@@ -1,0 +1,252 @@
+1) Recommended overall strategy & choices (summary)
+
+Python: use Python 3.10.13 (Coqui TTS, many libs, and pip resolution play nicely with this).
+
+STT (fast + accurate): use faster-whisper running Whisper base with MPS + compute_type float16. (On M1 Pro this typically beats openai-whisper CPU inference.)
+
+MT (fast + accurate): use a small focused en↔sk model — prefer a Helsinki/opus-mt EN→SK or a small Marian model for lower latency. facebook/m2m100_418M is heavy; use Helsinki-NLP/opus-mt-en-sk (local, fast).
+
+TTS (XTTS-v2): keep Coqui TTS v0.22 (you already have it). Speed improvements:
+
+Keep the model loaded once (already done).
+
+Run on MPS (use gpu=True with TTS if supported, move model to float16),
+
+Use quantization / export to optimized runtime only if stable — on macOS MPS quantization options are limited; better route: FP16 + model chunking + streaming or export to ONNX + use onnxruntime with Metal Execution Provider.
+
+Architectural change: split pipeline into independent services/threads so STT / MT / TTS can overlap — do not wait for TTS to finish before starting next STT segment. Use streaming partial transcriptions to display early subtitles.
+
+2) Recommended requirements.txt (tested/compatible set for macOS M1, Python 3.10)
+
+Save this as requirements_coqui_min.txt. It pins versions that are known to work together and are not too old:
+
+# Python 3.10 environment (macOS Apple Silicon)
+
+# Coqui TTS (XTTS v2)
+TTS==0.22.0
+
+# Core ML libs (PyTorch + audio)
+torch==2.1.2
+torchaudio==2.1.2
+
+# Faster whisper for STT (Whisper base with MPS support)
+faster-whisper==0.8.3
+
+# Whisper fallback (if you ever need it)
+# openai-whisper==20250625
+
+# Transformers / MT
+transformers==4.36.2
+sentencepiece==0.1.99
+# Use an efficient Marian/Helsinki model for en↔sk
+# (model name used at runtime; no extra package)
+
+# Audio / utils
+numpy==1.22.0
+scipy==1.11.2
+sounddevice
+soundfile
+pydub
+librosa==0.10.0        # downgraded to be compatible with numpy 1.22.0
+python-dotenv
+
+# Optional optimization / runtime
+onnxruntime            # for later ONNX export / runtime
+onnxruntime-gpu        # ignore if not using CUDA; may not be used on mac
+# (onnxruntime-metal available via conda or custom wheels; see note)
+
+# Optional utilities
+huggingface-hub
+datasets
+accelerate
+optimum
+streamlit
+
+# Development
+pytest
+
+
+Why these choices?
+
+numpy==1.22.0 to satisfy TTS==0.22.0.
+
+librosa==0.10.0 (downgraded): librosa 0.11 requires numpy>=1.22.3 which conflicts with TTS 1.22.0. 0.10.0 works well for signal tasks.
+
+faster-whisper gives large speedups on MPS—use it with compute_type="float16".
+
+torch==2.1.2 + torchaudio==2.1.2 are compatible with Coqui TTS and MPS on macOS.
+
+Note: ONNX/Metal runtime is tricky on macOS — you may want to try ONNX export+onnxruntime (or use Conda to install onnxruntime with Metal support). I included onnxruntime as optional for later optimization.
+
+3) Commands to create a fresh environment using pyenv + venv (copy & run)
+
+Install pyenv if not already:
+
+brew install pyenv
+
+
+Install Python 3.10.13 (one-time):
+
+pyenv install 3.10.13
+
+
+In your project folder set local python and create venv:
+
+cd /Users/yegor/Documents/STU/BP  # your project path
+pyenv local 3.10.13
+python -m venv venv-coqui
+source venv-coqui/bin/activate
+
+
+Upgrade pip and wheel:
+
+pip install --upgrade pip setuptools wheel
+
+
+Install the pinned requirements:
+
+pip install -r requirements_coqui_min.txt
+
+
+If you hit issues with onnxruntime or onnxruntime-gpu on macOS, skip those or install them later through conda or matching wheel. The rest should install on M1 successfully.
+
+4) Concrete changes to your pipeline (code-level suggestions — prioritized)
+
+You already have many good ideas. implement these steps in order — they give the best bang for the work/time:
+
+A — Use Whisper base with faster-whisper on MPS
+
+Replace WhisperModel(...) call to faster-whisper with compute_type float16 and device mps. Example:
+
+from faster_whisper import WhisperModel
+
+whisper_model = WhisperModel("base", device="mps", compute_type="float16")
+segments, info = whisper_model.transcribe(source_audio_wav_path, beam_size=5, language=source_lang)
+
+
+base on MPS + float16 often gives 3–6× speedup vs CPU openai-whisper and is close to ~1.0–1.5s for moderate utterances. Test with your audio lengths.
+
+B — Use a lightweight, local translation model
+
+Replace facebook/m2m100_418M with Helsinki opus model for en→sk:
+
+from transformers import MarianMTModel, MarianTokenizer
+model_name = "Helsinki-NLP/opus-mt-en-sk"
+tokenizer = MarianTokenizer.from_pretrained(model_name)
+model = MarianMTModel.from_pretrained(model_name).to("mps")
+
+
+This reduces MT latency to ~0.2–0.8s (depends on length).
+
+C — Preload TTS + use FP16 on MPS
+
+Preload once (you already do). Make sure you run TTS with MPS and FP16:
+
+tts = TTS(model_name=XTTS_MODEL_NAME, gpu=torch.backends.mps.is_available())
+# move model to float16 if supported
+try:
+    tts.model.to(torch.float16)
+except Exception:
+    pass
+
+
+Important: gpu=True in TTS may attempt CUDA; TTS uses Torch device detection — ensure it uses MPS.
+
+D — Avoid quantize_ on MPS unless proven
+
+You attempted quantize_(tts.model,"int8"). On macOS MPS, PyTorch quantization and torchao.quantization may not be supported or may be slower. Remove this until you test a supported pipeline. Quantization on CPU/GPU is non-trivial and often breaks models if not fully supported.
+
+E — Chunk + stream TTS generation (big win)
+
+Instead of synthesizing the entire translated paragraph in one call:
+
+Break translated text into phrase segments aligned by Whisper timestamps (use the segments output of faster-whisper).
+
+Synthesize per segment and stream playback (start playing first segments while later segments generate).
+
+This reduces perceived latency massively.
+
+F — Parallelize: overlap stages
+
+While TTS is generating chunk N, start STT on the next chunk (or continue streaming STT). Use asyncio / threads:
+
+Create independent worker threads for STT, MT, and TTS connected via asyncio queues.
+
+This overlaps compute and reduces wall-clock time.
+
+G — Cache speaker embedding (done) and avoid recompute — good.
+H — Postprocessing to remove artifact clicks
+
+Use crossfade on adjacent TTS segments (fade-in/out 50–150ms) and amplitude-envelope mapping (your idea) to avoid “chk” noise. This is cheap and effective.
+
+5) How to aim for ~10s TTS generation (practical plan)
+
+Your goal: reduce TTS from ~65–84s → near ~8–12s. Steps:
+
+Preload model (done) — removes ~30–36s load overhead.
+
+Use MPS + FP16 — this gives major speedup (2–6×). On M1 Pro you can expect large reductions vs CPU.
+
+Chunking + stream — synthesize in smaller parts and play as they appear. If you have 6s of speech, synthesize first 2s and play while generating the rest. This gives perceived latency ~2–3s while total generation finishes in 8–12s.
+
+Use smaller vocoder or simpler vocoder (e.g., hifigan_v2 vs heavier ones) — vocoder choice affects runtime.
+
+Avoid unsupported quantization; instead try ONNX export + onnxruntime-metal (advanced). ONNX runtime with Metal EP on mac can be faster than PyTorch MPS in some cases. That requires exporting Coqui TTS models to ONNX (non-trivial) but is a valid next step.
+
+Warmup: run a short dummy synthesis at startup to compile JIT kernels — improves subsequent inference.
+
+Tune generation parameters: temperature, speed, and disabling unneeded features (e.g., detailed prosody modeling) can reduce generation time.
+
+6) Concrete adjustments to your posted code (quick checklist)
+
+Remove quantize_ call for now — it caused problems.
+
+Use faster-whisper base with device="mps", compute_type="float16".
+
+Replace M2M100 with Helsinki-NLP/opus-mt-en-sk or Marian for speed.
+
+Keep tts model loaded once (you already do); call tts.tts_to_file per chunk; stream audio to playback as chunks finish.
+
+Use crossfade with pydub or numpy to stitch chunked outputs to avoid click artifacts.
+
+Move heavy library imports to module tops and models to global scope (so not re-created per call).
+
+7) Example recommended small code sketch for overlapping pipeline (conceptual)
+
+(very short — integrate into your code)
+
+# PSEUDO / conceptual
+# worker queues
+stt_queue = asyncio.Queue()
+mt_queue = asyncio.Queue()
+tts_queue = asyncio.Queue()
+
+async def stt_worker():
+    while True:
+        audio_chunk = await audio_input.get()
+        segments, _ = whisper_model.transcribe_chunk(audio_chunk)
+        for seg in segments:
+            await mt_queue.put(seg.text)
+
+async def mt_worker():
+    while True:
+        text = await mt_queue.get()
+        translation = mt_model.translate(text)
+        await tts_queue.put((translation, seg_timestamp))
+
+async def tts_worker():
+    while True:
+        translation, ts = await tts_queue.get()
+        tts.tts_to_file(text=translation, file_path=f"chunk_{ts}.wav", speaker_embedding=emb)
+        play_async(f"chunk_{ts}.wav")  # start playback immediately
+
+
+This overlaps STT & MT & TTS and produces a much smaller perceived delay.
+
+8) Final notes & pitfalls
+
+Don’t quantize blindly. On MPS quantization may not be supported or may slow things. Test FP16 first.
+
+Test performance stepwise: measure (a) STT alone, (b) MT alone, (c) TTS small text alone, (d) full pipeline with chunking. Collect numbers and iterate.
+
+If you want the absolute fastest path to 2–3s end-to-end, you’ll likely need cloud GPUs or much smaller TTS models. But for a robust bachelor prototype, MPS + FP16 + streaming chunked TTS + efficient MT should get you into the 2–12s range depending on utterance length and how aggressive you stream.
