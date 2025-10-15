@@ -1,90 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Live Speech Translation</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>🌐 Live Speech Translation</h1>
-            <p>Real-time translation with voice cloning</p>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container" role="application" aria-label="Live Speech Translation app">
+      <!-- Header -->
+      <div class="header">
+        <h1 aria-label="Live Speech Translation">🌐 Live Speech Translation</h1>
+        <p>Real-time translation with voice cloning</p>
+      </div>
+
+      <!-- Main Control Section -->
+      <div class="main-controls" aria-hidden="false">
+        <div class="top-row">
+          <div class="state-indicators" aria-hidden="true">
+            <div class="state-item" role="status" aria-live="polite">
+              <span
+                id="stateListening"
+                class="state-icon idle"
+                title="Listening"
+                aria-hidden="true"
+                >👂</span
+              >
+              <span class="state-label">Listening</span>
+            </div>
+            <div class="state-item" role="status" aria-live="polite">
+              <span
+                id="stateTranslating"
+                class="state-icon idle"
+                title="Translating"
+                aria-hidden="true"
+                >💬</span
+              >
+              <span class="state-label">Translating</span>
+            </div>
+            <div class="state-item" role="status" aria-live="polite">
+              <span id="stateSpeaking" class="state-icon idle" title="Speaking" aria-hidden="true"
+                >📢</span
+              >
+              <span class="state-label">Speaking</span>
+            </div>
+          </div>
+
+          <div class="input-level-container" aria-live="polite" aria-atomic="true">
+            <label id="micLevelLabel">Mic Input Level:</label>
+            <div class="input-level-bar-segments" id="inputLevelSegments" aria-labelledby="micLevelLabel" role="img" aria-label="Microphone input level">
+              <!-- Segments will be dynamically added/removed by JavaScript -->
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label for="ttsModelSelect">TTS Model:</label>
+            <select
+              id="ttsModelSelect"
+              class="model-select"
+              title="Select TTS Model"
+              aria-label="Select Text-to-Speech model"
+            >
+              <option value="xtts_v2">XTTS v2</option>
+              <option value="glow_tts">Glow-TTS (fast option)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main content: Two columns -->
+      <div class="content">
+        <!-- Left Column: Transcription -->
+        <div class="column transcription-column" aria-live="polite">
+          <div class="column-header">
+            <h2>📝 Transcription</h2>
+            <span id="inputLanguageBadge" class="language-badge" aria-hidden="true">EN</span>
+            <label for="inputLanguageSelect" class="visually-hidden">Input language</label>
+            <select
+              id="inputLanguageSelect"
+              class="language-select"
+              title="Select Input Language"
+              aria-label="Select input language"
+            >
+              <option value="en" selected>English (English)</option>
+              <option value="es">Spanish (Español)</option>
+              <option value="fr">French (Français)</option>
+              <option value="de">German (Deutsch)</option>
+              <option value="it">Italian (Italiano)</option>
+              <option value="pt">Portuguese (Português)</option>
+              <option value="pl">Polish (Polski)</option>
+              <option value="tr">Turkish (Türkçe)</option>
+              <option value="ru">Russian (Русский)</option>
+              <option value="nl">Dutch (Nederlands)</option>
+              <option value="cs">Czech (Čeština)</option>
+              <option value="ar">Arabic (العربية)</option>
+              <option value="zh-cn">Chinese (中文)</option>
+              <option value="ja">Japanese (日本語)</option>
+              <option value="hu">Hungarian (Magyar)</option>
+              <option value="ko">Korean (한국어)</option>
+              <option value="hi">Hindi (हिन्दी)</option>
+            </select>
+          </div>
+          <div class="transcript-box" id="transcriptionBox" tabindex="0" role="region" aria-label="Transcription output">
+            <p class="placeholder">Waiting for speech...</p>
+          </div>
         </div>
 
-        <!-- Main content: Two columns -->
-        <div class="content">
-            <!-- Left Column: Transcription -->
-            <div class="column transcription-column">
-                <div class="column-header">
-                    <h2>📝 Transcription</h2>
-                    <span class="language-badge">English</span>
-                </div>
-                <div class="transcript-box" id="transcriptionBox">
-                    <p class="placeholder">Waiting for speech...</p>
-                </div>
-            </div>
+        <!-- Divider -->
+        <div class="divider" aria-hidden="true"></div>
 
-            <!-- Divider -->
-            <div class="divider"></div>
-
-            <!-- Right Column: Translation -->
-            <div class="column translation-column">
-                <div class="column-header">
-                    <h2>🗣️ Translation</h2>
-                    <select id="languageSelect" class="language-select" title="Select Target Language">
-                        <option value="sk">Slovak (Slovenčina)</option>
-                        <option value="cs">Czech (Čeština)</option>
-                        <option value="de">German (Deutsch)</option>
-                        <option value="fr">French (Français)</option>
-                        <option value="es">Spanish (Español)</option>
-                        <option value="it">Italian (Italiano)</option>
-                    </select>
-                </div>
-                <div class="transcript-box" id="translationBox">
-                    <p class="placeholder">Translation will appear here...</p>
-                </div>
-            </div>
+        <!-- Right Column: Translation -->
+        <div class="column translation-column" aria-live="polite">
+          <div class="column-header">
+            <h2>🗣️ Translation</h2>
+            <span id="outputLanguageBadge" class="language-badge" aria-hidden="true">CS</span>
+            <label for="outputLanguageSelect" class="visually-hidden">Output language</label>
+            <select
+              id="outputLanguageSelect"
+              class="language-select"
+              title="Select Target Language"
+              aria-label="Select target language"
+            >
+              <option value="en">English (English)</option>
+              <option value="es">Spanish (Español)</option>
+              <option value="fr">French (Français)</option>
+              <option value="de">German (Deutsch)</option>
+              <option value="it">Italian (Italiano)</option>
+              <option value="pt">Portuguese (Português)</option>
+              <option value="pl">Polish (Polski)</option>
+              <option value="tr">Turkish (Türkçe)</option>
+              <option value="ru">Russian (Русский)</option>
+              <option value="nl">Dutch (Nederlands)</option>
+              <option value="cs" selected>Czech (Čeština)</option>
+              <option value="ar">Arabic (العربية)</option>
+              <option value="zh-cn">Chinese (中文)</option>
+              <option value="ja">Japanese (日本語)</option>
+              <option value="hu">Hungarian (Magyar)</option>
+              <option value="ko">Korean (한국어)</option>
+              <option value="hi">Hindi (हिन्दी)</option>
+            </select>
+          </div>
+          <div class="transcript-box" id="translationBox" tabindex="0" role="region" aria-label="Translation output">
+            <p class="placeholder">Translation will appear here...</p>
+          </div>
         </div>
+      </div>
 
-        <!-- Metrics -->
-        <div class="metrics">
-            <div class="metric">
-                <span class="metric-label">STT:</span>
-                <span class="metric-value" id="sttTime">0.0s</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">MT:</span>
-                <span class="metric-value" id="mtTime">0.0s</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">TTS:</span>
-                <span class="metric-value" id="ttsTime">0.0s</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">Total:</span>
-                <span class="metric-value" id="totalTime">0.0s</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">Status:</span>
-                <span class="metric-value" id="statusText">Disconnected</span>
-            </div>
+      <!-- Metrics -->
+      <div class="metrics" role="status" aria-live="polite">
+        <div class="metric" aria-hidden="false">
+          <span class="metric-label">STT:</span>
+          <span class="metric-value" id="sttTime">0.0s</span>
         </div>
+        <div class="metric">
+          <span class="metric-label">MT:</span>
+          <span class="metric-value" id="mtTime">0.0s</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">TTS:</span>
+          <span class="metric-value" id="ttsTime">0.0s</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Total:</span>
+          <span class="metric-value" id="totalTime">0.0s</span>
+        </div>
+      </div>
 
-        <!-- Footer with controls -->
-        <div class="footer">
-            <button id="initBtn" class="btn btn-init">Initialize</button>
-            <button id="startBtn" class="btn btn-start" disabled>Start</button>
-            <button id="stopBtn" class="btn btn-stop" disabled>Stop</button>
-            <div class="status-indicator">
-                <span id="statusIndicator" class="indicator off"></span>
-                <span id="statusLabel">Ready</span>
-            </div>
+      <!-- Footer with controls -->
+      <div class="footer">
+        <button id="initBtn" class="btn btn-init" aria-live="polite">Initialize</button>
+        <button id="startBtn" class="btn btn-start" disabled>Start</button>
+        <button id="stopBtn" class="btn btn-stop" disabled>Stop</button>
+        <div class="status-indicator" aria-hidden="true">
+          <span id="statusIndicator" class="indicator off" aria-hidden="true"></span>
+          <span id="statusLabel">Ready</span>
         </div>
+      </div>
+
+      <div class="settings-status" role="status" aria-live="polite">
+        <span id="settingsStatusText" class="metric-value"></span>
+      </div>
     </div>
 
     <script src="script.js"></script>
-</body>
+  </body>
 </html>

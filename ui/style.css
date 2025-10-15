@@ -1,3 +1,5 @@
+/* ===== base styles (updated for accessibility + minor polish) ===== */
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
@@ -10,6 +12,8 @@ body {
     min-height: 100vh;
     overflow: auto;
     font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
@@ -44,6 +48,144 @@ body {
     color: #a0a0a0;
 }
 
+/* Main controls */
+.main-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 15px 0;
+    border-bottom: 1px solid #3a3a50;
+}
+
+.main-controls .top-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+}
+
+.control-group label {
+    font-weight: bold;
+    color: #e0e0e0;
+    font-size: 0.9em;
+}
+
+.language-select,
+.model-select {
+    background-color: #3a3a50;
+    color: #e0e0e0;
+    border: 1px solid #5a5a70;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 1em;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23e0e0e0%22%20d%3D%22M287%2C197.3L159.3%2C69.7c-4.2-4.2-11-4.2-15.2%2C0L5.4%2C197.3c-4.2%2C4.2-4.2%2C11%2C0%2C15.2l15.2%2C15.2c4.2%2C4.2%2C11%2C4.2%2C15.2%2C0l111.7-111.7l111.7%2C111.7c4.2%2C4.2%2C11%2C4.2%2C15.2%2C0l15.2-15.2C291.2%2C208.3%2C291.2%2C201.5%2C287%2C197.3z%22%2F%3E%3C%2Fsvg%3E');
+    background-repeat: no-repeat;
+    background-position: right 10px top 50%;
+    background-size: 12px;
+    padding-right: 30px;
+    min-width: 180px;
+}
+
+.language-select:focus,
+.model-select:focus {
+    outline: none;
+    border-color: #e94560;
+    box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.5);
+}
+
+/* Input level bar */
+.input-level-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    min-width: 180px;
+}
+
+.input-level-bar-segments {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 20px;
+    background-color: #3a3a50;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #5a5a70;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+    padding: 0 2px;
+}
+
+.level-segment {
+    flex-grow: 1;
+    height: 80%;
+    background-color: #5a5a70;
+    border-radius: 2px;
+    transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+    transform-origin: bottom center;
+}
+
+.level-segment.active {
+    background-color: #4CAF50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.45);
+    transform: scaleY(1.22);
+}
+
+.level-segment.active.medium {
+    background-color: #FFEB3B;
+    box-shadow: 0 0 6px rgba(255, 235, 59, 0.45);
+}
+
+.level-segment.active.high {
+    background-color: #F44336;
+    box-shadow: 0 0 6px rgba(244, 67, 54, 0.45);
+}
+
+/* state indicators */
+.state-indicators {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    padding: 15px 0;
+}
+
+.state-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.state-icon {
+    font-size: 2em;
+    opacity: 0.28;
+    transition: opacity 0.3s ease, transform 0.18s ease;
+}
+
+.state-icon.active {
+    opacity: 1;
+    color: #e94560;
+    transform: translateY(-3px);
+}
+
+.state-label {
+    font-size: 0.9em;
+    color: #a0a0a0;
+}
+
+/* columns */
 .content {
     display: flex;
     flex-wrap: wrap;
@@ -86,31 +228,6 @@ body {
     font-weight: bold;
 }
 
-.language-select {
-    background-color: #3a3a50;
-    color: #e0e0e0;
-    border: 1px solid #5a5a70;
-    border-radius: 5px;
-    padding: 8px 12px;
-    font-size: 1em;
-    cursor: pointer;
-   /* Remove default dropdown arrow */
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23e0e0e0%22%20d%3D%22M287%2C197.3L159.3%2C69.7c-4.2-4.2-11-4.2-15.2%2C0L5.4%2C197.3c-4.2%2C4.2-4.2%2C11%2C0%2C15.2l15.2%2C15.2c4.2%2C4.2%2C11%2C4.2%2C15.2%2C0l111.7-111.7l111.7%2C111.7c4.2%2C4.2%2C11%2C4.2%2C15.2%2C0l15.2-15.2C291.2%2C208.3%2C291.2%2C201.5%2C287%2C197.3z%22%2F%3E%3C%2Fsvg%3E');
-    background-repeat: no-repeat;
-    background-position: right 10px top 50%;
-    background-size: 12px;
-    padding-right: 30px;
-}
-
-.language-select:focus {
-    outline: none;
-    border-color: #e94560;
-    box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.5);
-}
-
 .transcript-box {
     background-color: #1a1a2e;
     border: 1px solid #3a3a50;
@@ -144,6 +261,7 @@ body {
     margin: 0 10px;
 }
 
+/* metrics */
 .metrics {
     display: flex;
     flex-wrap: wrap;
@@ -173,6 +291,7 @@ body {
     color: #e0e0e0;
 }
 
+/* footer */
 .footer {
     display: flex;
     justify-content: center;
@@ -189,7 +308,7 @@ body {
     border-radius: 8px;
     font-size: 1.1em;
     cursor: pointer;
-    transition: background-color 0.3s ease, transform 0.2s ease;
+    transition: background-color 0.3s ease, transform 0.12s ease;
     box-shadow: 0 4px 10px rgba(233, 69, 96, 0.4);
 }
 
@@ -233,16 +352,48 @@ body {
 }
 
 .indicator.on {
-    background-color: #4CAF50; /* Green for active */
+    background-color: #4CAF50;
+}
+
+.indicator.prepping {
+    background-color: #FFC107;
 }
 
 .indicator.off {
-    background-color: #e94560; /* Red for inactive/disconnected */
+    background-color: #e94560;
 }
 
 #statusLabel {
     font-weight: bold;
     color: #e0e0e0;
+}
+
+.settings-status {
+    text-align: center;
+    margin-top: 10px;
+    font-size: 0.9em;
+    color: #a0a0a0;
+}
+
+/* Visually hidden (for screen reader labels) */
+.visually-hidden {
+    position: absolute !important;
+    height: 1px;
+    width: 1px;
+    overflow: hidden;
+    clip: rect(1px, 1px, 1px, 1px);
+    white-space: nowrap;
+    border: 0;
+    padding: 0;
+    margin: -1px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
 }
 
 /* Responsive adjustments */
@@ -283,5 +434,16 @@ body {
     .footer {
         flex-direction: column;
         gap: 15px;
+    }
+
+    .main-controls .top-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .control-group,
+    .input-level-container {
+        min-width: unset;
+        width: 100%;
     }
 }

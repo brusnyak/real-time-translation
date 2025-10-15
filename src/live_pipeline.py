@@ -1,244 +1,297 @@
-import asyncio
 import os
+import sys
 import time
-import threading
+import queue
+import sounddevice as sd
 import numpy as np
 import soundfile as sf
-import sounddevice as sd
-from collections import deque
-from stt_module import STTModule
-from mt_module import MTModule
-from tts_module import TTSModule
+import threading
+import uuid
+import webrtcvad
+from scipy import signal
+import datetime # Added import for datetime
+import torch # Added import for torch to check GPU availability
+
+# Add the parent directory of 'src' to sys.path to allow absolute imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.stt_module import STTModule
+from src.mt_module import MTModule
+from src.tts_module import TTSModule
 
 
-class LiveTranslationPipeline:
-    """
-    Live speech translation pipeline with BlackHole output support.
-    Streams audio in real-time with concurrent processing.
-    """
-    
-    def __init__(self, 
-                 source_lang="en", 
-                 target_lang="sk",
-                 output_device_name="BlackHole 2ch",  # macOS BlackHole device
-                 chunk_duration=2.0):  # Process 2-second chunks
-        """
-        Args:
-            source_lang: Source language ("en")
-            target_lang: Target language ("sk")
-            output_device_name: Name of virtual audio device (BlackHole on Mac)
-            chunk_duration: Duration of audio chunks in seconds
-        """
-        self.source_lang = source_lang
+class LivePipeline:
+    def __init__(
+        self,
+        input_device=1, # MacBook Pro Microphone
+        output_device=None,
+        blackhole_name="BlackHole 2ch",
+        input_sample_rate=16000, # Native sample rate of MacBook Pro Microphone
+        target_processing_sample_rate=16000, # VAD and STT models typically use 16kHz
+        frame_duration=30, # ms per frame for VAD
+        vad_aggressiveness=2,
+        min_speech_duration=1.0,
+        silence_timeout=0.8,
+        target_lang="sk",
+        speaker_reference_path="tests/My test speech_xtts_speaker.wav",
+        speaker_language="en",
+    ):
+        # Audio configuration
+        self.input_sample_rate = input_sample_rate
+        self.target_processing_sample_rate = target_processing_sample_rate
+        self.frame_duration = frame_duration  # ms per frame
+        self.frame_size = int(self.target_processing_sample_rate * frame_duration / 1000)
+        self.channels = 1
+
+        # Devices
+        self.input_device = input_device
+        self.output_device = output_device
+        self.blackhole_id = self._find_device_id(blackhole_name)
+
+        # Voice Activity Detection
+        self.vad = webrtcvad.Vad(vad_aggressiveness)
+        self.audio_buffer = queue.Queue()
+        self.last_activity = time.time()
+        self.consecutive_silence_frames = 0
+
+        # Determine device for models
+        device = "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+            print("[INFO] Using MPS (Apple Silicon GPU) for models.")
+        elif torch.cuda.is_available():
+            device = "cuda"
+            print("[INFO] Using CUDA (NVIDIA GPU) for models.")
+        else:
+            print("[INFO] No GPU detected, using CPU for models.")
+
+        # Components
+        # STTModule does not support MPS, so force CPU
+        self.stt = STTModule(device="cpu")
+        self.mt = MTModule(device=device)
+        # TTSModule also has MPS issues with attention mask, so force CPU for now
+        self.tts = TTSModule(
+            speaker_reference_path=speaker_reference_path,
+            speaker_language=speaker_language,
+            device="cpu",
+            compute_type="float32", # Reverting to float32 as int8 did not improve performance
+            skip_warmup=False
+        )
         self.target_lang = target_lang
-        self.output_device_name = output_device_name
-        self.chunk_duration = chunk_duration
-        self.sample_rate = 16000
+
+        # Parameters
+        self.min_speech_duration = min_speech_duration
+        self.silence_timeout = silence_timeout
+
+        # Metrics
+        self.total_chunks = 0
+        self.total_time = 0.0
+
+        print(f"[INIT] LivePipeline ready — target: {target_lang}")
+
+    # --- DEVICE UTILITIES ---
+
+    def _find_device_id(self, name):
+        """Find a device ID by (partial) name match."""
+        try:
+            devices = sd.query_devices()
+            for idx, d in enumerate(devices):
+                if name.lower() in d["name"].lower():
+                    print(f"[AUDIO] Found device '{name}' at ID {idx}")
+                    return idx
+            print(f"[AUDIO] Device '{name}' not found.")
+        except Exception as e:
+            print(f"[AUDIO] Query error: {e}")
+        return None
+
+    # --- RECORDING & CALLBACK ---
+
+    def _audio_callback(self, indata, frames, time_info, status):
+        if status:
+            print("[WARN]", status)
+
+        # Convert to mono, normalize
+        mono = np.mean(indata, axis=1) if indata.ndim > 1 else indata
+        mono = np.clip(mono, -1.0, 1.0)
+
+        # Resample to target_processing_sample_rate (16kHz) for VAD and STT
+        if self.input_sample_rate != self.target_processing_sample_rate:
+            num_output_samples = int(len(mono) * self.target_processing_sample_rate / self.input_sample_rate)
+            mono = signal.resample(mono, num_output_samples)
         
-        print("[PIPELINE] Initializing live translation pipeline...")
-        print(f"[PIPELINE] {source_lang} -> {target_lang}")
-        print(f"[PIPELINE] Output device: {output_device_name}")
+        # Apply a gain factor (if needed, adjust this value based on testing)
+        gain_factor = 5.0 # Start with a moderate gain
+        mono *= gain_factor
+        mono = np.clip(mono, -1.0, 1.0) # Re-clip after applying gain
+
+        self.audio_buffer.put_nowait(mono.copy())
+
+    # --- MAIN LOOP ---
+
+    def start(self):
+        print(f"[START] Capturing from: {sd.query_devices(self.input_device)['name']} (ID: {self.input_device})")
+        print(f"[INFO] Input SR = {self.input_sample_rate} Hz, Processing SR = {self.target_processing_sample_rate} Hz")
+        print(f"[INFO] VAD frame = {self.frame_duration}ms")
+
+        with sd.InputStream(
+            device=self.input_device,
+            channels=self.channels,
+            samplerate=self.input_sample_rate,
+            callback=self._audio_callback,
+        ):
+            active_frames = []
+            continuous_buffer = np.array([]) # Buffer to accumulate audio for fixed-size frames
+            print("[INFO] Listening... (Ctrl+C to stop)")
+            while True:
+                try:
+                    # Get all available audio from the buffer
+                    while not self.audio_buffer.empty():
+                        continuous_buffer = np.concatenate((continuous_buffer, self.audio_buffer.get_nowait()))
+                except queue.Empty:
+                    pass # No new audio, continue processing existing buffer
+
+                # Process continuous_buffer in fixed-size frames
+                while len(continuous_buffer) >= self.frame_size:
+                    frame = continuous_buffer[:self.frame_size]
+                    continuous_buffer = continuous_buffer[self.frame_size:]
+
+                    if self._detect_speech(frame):
+                        active_frames.append(frame)
+                        self.last_activity = time.time()
+                        print("•", end="", flush=True)  # speech indicator
+                    else:
+                        print(".", end="", flush=True)
+                        if active_frames and (time.time() - self.last_activity) > self.silence_timeout:
+                            print("\n[SEGMENT] Speech detected, processing chunk...")
+                            self._process_chunk(np.concatenate(active_frames))
+                            active_frames.clear()
+                            self.last_activity = time.time()
+                
+                time.sleep(0.01) # Small sleep to prevent busy-waiting if no new audio
+
+    # --- SPEECH DETECTION ---
+
+    def _detect_speech(self, frame):
+        """Return True if speech is detected in frame."""
+        frame_int16 = np.clip(frame * 32767, -32768, 32767).astype(np.int16)
         
-        # Initialize modules
-        self.stt_module = STTModule(model_size="base", device="cpu", compute_type="int8")
-        self.mt_module = MTModule(source_lang=source_lang, target_lang=target_lang, device="mps")
-        self.tts_module = TTSModule(
+        try:
+            is_speech = self.vad.is_speech(frame_int16.tobytes(), self.target_processing_sample_rate)
+            return is_speech
+        except Exception as e:
+            print(f"[WARN] VAD error: {e}") # Changed to WARN as it's not fatal
+            return False
+
+    # --- PROCESSING CHAIN ---
+
+    def _process_chunk(self, audio_data):
+        """STT → Translate → TTS → Play"""
+        start = time.time()
+        self.total_chunks += 1
+
+        if len(audio_data) < self.target_processing_sample_rate * self.min_speech_duration:
+            print("[PROCESS] Too short, skipping.")
+            return
+
+        # Save temp WAV
+        chunk_path = f"/tmp/live_chunk_{uuid.uuid4().hex}.wav"
+        sf.write(chunk_path, audio_data, self.target_processing_sample_rate)
+        print(f"[PROCESS] Saved {chunk_path}")
+
+        # Step 1: Speech to text
+        segments, info = self.stt.transcribe(chunk_path)
+        text = " ".join([segment.text for segment in segments])
+        print("[STT]", text)
+        if not text.strip():
+            return
+
+        # Step 2: Translation
+        translated = self.mt.translate(text)
+        print(f"[MT] {translated}")
+
+        # Step 3: Text to speech
+        # Generate a unique directory for this chunk's artifacts
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        output_chunk_dir = os.path.join("research", f"test_{timestamp}")
+        os.makedirs(output_chunk_dir, exist_ok=True)
+
+        # Save transcribed text
+        with open(os.path.join(output_chunk_dir, "transcribed_text.txt"), "w") as f:
+            f.write(text)
+        print(f"[PROCESS] Saved transcribed text to {output_chunk_dir}/transcribed_text.txt")
+
+        # Save translated text
+        with open(os.path.join(output_chunk_dir, "translated_text.txt"), "w") as f:
+            f.write(translated)
+        print(f"[PROCESS] Saved translated text to {output_chunk_dir}/translated_text.txt")
+
+        # Generate a path for TTS output within the chunk directory
+        tts_output_filepath = os.path.join(output_chunk_dir, "translated_audio.wav")
+        tts_audio_path = self.tts.synthesize(translated, output_path=tts_output_filepath)
+        
+        if tts_audio_path:
+            print(f"[TTS] Saved {tts_audio_path}")
+            # Step 4: Playback
+            self._play_audio_nonblocking(tts_audio_path)
+        else:
+            print("[TTS] TTS synthesis failed, no audio to play.")
+            return
+
+        elapsed = time.time() - start
+        self.total_time += elapsed
+        avg_time = self.total_time / self.total_chunks
+        print(f"[METRICS] Chunk {self.total_chunks} done in {elapsed:.2f}s (avg {avg_time:.2f}s)")
+
+    # --- AUDIO PLAYBACK ---
+
+    def _play_audio_nonblocking(self, audio_file_path):
+        """Play TTS audio to BlackHole (with fallback to speakers)."""
+        def playback_thread(file_path, blackhole_id):
+            try:
+                data, sr = sf.read(file_path, dtype='float32')
+                
+                played = False
+                if blackhole_id is not None:
+                    try:
+                        sd.play(data, samplerate=sr, device=blackhole_id)
+                        sd.wait()
+                        print("[OUTPUT] BlackHole ✓")
+                        played = True
+                    except Exception as e:
+                        print(f"[OUTPUT] BlackHole error: {e}")
+
+                if not played:
+                    try:
+                        sd.play(data, samplerate=sr)
+                        sd.wait()
+                        print("[OUTPUT] Speaker ✓")
+                    except Exception as e:
+                        print(f"[OUTPUT] Speaker error: {e}")
+
+            except Exception as e:
+                print(f"[OUTPUT] Playback error: {e}")
+            # Removed finally block to prevent deletion of persistently saved files
+        threading.Thread(
+            target=playback_thread,
+            args=(audio_file_path, self.blackhole_id),
+            daemon=True,
+        ).start()
+
+
+# --- RUN MAIN ---
+if __name__ == "__main__":
+    try:
+        pipeline = LivePipeline(
+            input_device=1, # MacBook Pro Microphone
+            input_sample_rate=48000,
+            target_processing_sample_rate=16000,
+            target_lang="sk",
+            vad_aggressiveness=2,
             speaker_reference_path="tests/My test speech_xtts_speaker.wav",
             speaker_language="en",
-            device="cpu",
-            skip_warmup=False  # Do warmup once
         )
-        
-        # Find BlackHole device ID
-        self.output_device_id = self._find_device_id(output_device_name)
-        if self.output_device_id is None:
-            print(f"[PIPELINE] Warning: {output_device_name} not found. Will play through default device.")
-        
-        # Buffers and queues
-        self.audio_buffer = deque(maxlen=int(chunk_duration * self.sample_rate))
-        self.is_recording = False
-        self.is_translating = False
-        
-        # Timing metrics
-        self.metrics = {
-            "stt_time": 0,
-            "mt_time": 0,
-            "tts_time": 0,
-            "total_latency": 0
-        }
-    
-    def _find_device_id(self, device_name):
-        """Find audio device ID by name."""
-        devices = sd.query_devices()
-        for i, device in enumerate(devices):
-            if device_name.lower() in device["name"].lower():
-                return i
-        return None
-    
-    def start_recording(self):
-        """Start recording audio from microphone."""
-        if self.is_recording:
-            print("[PIPELINE] Already recording.")
-            return
-        
-        self.is_recording = True
-        print("[PIPELINE] Starting microphone input...")
-        
-        def audio_callback(indata, frames, time_info, status):
-            if status:
-                print(f"[RECORDING] Status: {status}")
-            self.audio_buffer.extend(indata[:, 0])
-        
-        self.stream = sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            blocksize=512,
-            callback=audio_callback
-        )
-        self.stream.start()
-        print("[PIPELINE] Recording started. Speak now...")
-    
-    def stop_recording(self):
-        """Stop recording."""
-        if not self.is_recording:
-            return
-        
-        self.is_recording = False
-        self.stream.stop()
-        self.stream.close()
-        print("[PIPELINE] Recording stopped.")
-    
-    async def process_audio_chunk(self):
-        """Process accumulated audio chunk through STT -> MT -> TTS -> Output."""
-        if len(self.audio_buffer) < int(self.chunk_duration * self.sample_rate):
-            return None
-        
-        print(f"[PIPELINE] Processing audio chunk ({len(self.audio_buffer)} samples)...")
-        
-        # Convert buffer to file
-        audio_data = np.array(list(self.audio_buffer), dtype=np.float32)
-        chunk_path = "/tmp/live_chunk.wav"
-        sf.write(chunk_path, audio_data, self.sample_rate)
-        self.audio_buffer.clear()
-        
-        # STT
-        start_stt = time.time()
-        try:
-            segments, _ = self.stt_module.transcribe(chunk_path, language=self.source_lang)
-            transcribed_text = " ".join([seg.text for seg in segments])
-            stt_time = time.time() - start_stt
-            self.metrics["stt_time"] = stt_time
-            
-            if not transcribed_text.strip():
-                print("[PIPELINE] No speech detected in chunk.")
-                os.remove(chunk_path)
-                return None
-            
-            print(f"[STT] Transcribed ({stt_time:.2f}s): {transcribed_text[:50]}...")
-        except Exception as e:
-            print(f"[STT] Error: {e}")
-            os.remove(chunk_path)
-            return None
-        
-        # MT
-        start_mt = time.time()
-        try:
-            translated_text = self.mt_module.translate(transcribed_text)
-            translated_text = self.mt_module._fix_slovak_grammar(translated_text)
-            mt_time = time.time() - start_mt
-            self.metrics["mt_time"] = mt_time
-            
-            print(f"[MT] Translated ({mt_time:.2f}s): {translated_text[:50]}...")
-        except Exception as e:
-            print(f"[MT] Error: {e}")
-            os.remove(chunk_path)
-            return None
-        
-        # TTS (streaming)
-        start_tts = time.time()
-        try:
-            tts_path = await self.tts_module.synthesize_chunks_concurrently(
-                [translated_text],
-                crossfade_ms=50
-            )
-            tts_time = time.time() - start_tts
-            self.metrics["tts_time"] = tts_time
-            
-            print(f"[TTS] Synthesized ({tts_time:.2f}s)")
-        except Exception as e:
-            print(f"[TTS] Error: {e}")
-            os.remove(chunk_path)
-            return None
-        
-        # Play to BlackHole
-        self.metrics["total_latency"] = time.time() - start_stt
-        await self._play_to_device(tts_path)
-        
-        # Cleanup
-        os.remove(chunk_path)
-        if tts_path and os.path.exists(tts_path):
-            os.remove(tts_path)
-        
-        print(f"[PIPELINE] Chunk processed. Total latency: {self.metrics['total_latency']:.2f}s")
-        print(f"  STT: {self.metrics['stt_time']:.2f}s | MT: {self.metrics['mt_time']:.2f}s | TTS: {self.metrics['tts_time']:.2f}s")
-        
-        return {
-            "transcribed": transcribed_text,
-            "translated": translated_text,
-            "latency": self.metrics["total_latency"]
-        }
-    
-    async def _play_to_device(self, audio_file):
-        """Play synthesized audio to BlackHole device."""
-        try:
-            audio_data, sr = sf.read(audio_file, dtype=np.float32)
-            
-            # Resample if needed
-            if sr != self.sample_rate:
-                from scipy import signal
-                num_samples = int(len(audio_data) * self.sample_rate / sr)
-                audio_data = signal.resample(audio_data, num_samples)
-            
-            # Play in thread to avoid blocking
-            def play():
-                sd.play(
-                    audio_data,
-                    samplerate=self.sample_rate,
-                    device=self.output_device_id,
-                    blocking=True
-                )
-            
-            thread = threading.Thread(target=play, daemon=True)
-            thread.start()
-            
-            print(f"[OUTPUT] Playing to {self.output_device_name}...")
-        except Exception as e:
-            print(f"[OUTPUT] Error playing audio: {e}")
-    
-    async def run_live(self):
-        """Run live translation in loop."""
-        print("[PIPELINE] Starting live translation. Press Ctrl+C to stop.")
-        self.start_recording()
-        
-        try:
-            while True:
-                await self.process_audio_chunk()
-                await asyncio.sleep(1)  # Check every second
-        except KeyboardInterrupt:
-            print("\n[PIPELINE] Stopping...")
-            self.stop_recording()
-
-
-# Simple CLI wrapper
-async def main():
-    pipeline = LiveTranslationPipeline(
-        source_lang="en",
-        target_lang="sk",
-        output_device_name="BlackHole 2ch",
-        chunk_duration=2.0
-    )
-    await pipeline.run_live()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        pipeline.start()
+    except KeyboardInterrupt:
+        print("\n[EXIT] Stopped by user.")
+    except Exception as e:
+        print(f"[FATAL] {e}")

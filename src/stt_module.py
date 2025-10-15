@@ -2,23 +2,24 @@ import torch
 from faster_whisper import WhisperModel
 
 class STTModule:
-    def __init__(self, model_size="base", device="cpu", compute_type="int8"):
+    def __init__(self, model_size="base", device="cpu", compute_type="int8", language="en"):
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
+        self.language = language # Store the language
         print(f"Initializing Faster-Whisper model: {self.model_size} on device: {self.device} with compute type: {self.compute_type}...")
         start_time = time.time()
         self.model = WhisperModel(self.model_size, device=self.device, compute_type=self.compute_type)
         self._load_time = time.time() - start_time
         print(f"Faster-Whisper model initialized in {self._load_time:.3f}s.")
 
-    def transcribe(self, audio_path, language="en"):
+    def transcribe(self, audio_path): # Removed language parameter, use self.language
         """
         Transcribes audio from a given path.
         Returns segments and info from faster-whisper.
         """
-        print(f"Transcribing audio with Faster-Whisper (language: {language})...")
-        segments, info = self.model.transcribe(audio_path, beam_size=5, language=language)
+        print(f"Transcribing audio with Faster-Whisper (language: {self.language})...")
+        segments, info = self.model.transcribe(audio_path, beam_size=5, language=self.language)
         return segments, info
 
     def transcribe_chunk(self, audio_chunk, language="en"):

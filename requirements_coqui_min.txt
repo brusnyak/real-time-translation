@@ -1,8 +1,8 @@
 # Python 3.10 environment (macOS Apple Silicon M1 Pro)
 
 # === Core ML libs (PyTorch + audio) ===
-torch==2.6.0
-torchaudio==2.6.0
+torch>=2.7.0
+torchaudio>=2.7.0
 
 # === Speech-to-Text ===
 faster-whisper==1.2.0
@@ -34,10 +34,13 @@ librosa==0.10.0          # Downgraded for numpy 1.22.0 compatibility
 python-dotenv
 numba==0.58.1
 ffmpeg
+webrtcvad
 
 # === Optional optimization/runtime ===
 accelerate               # For optimized inference
 huggingface-hub          # For model management
+fastapi                   # For API
+uvicorn                  # For ASGI server
 
 # === Utilities ===
 streamlit                # For UI (optional)
