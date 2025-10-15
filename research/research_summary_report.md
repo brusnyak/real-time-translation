@@ -33,6 +33,59 @@ Based on the project requirements and initial recommendations, the following cor
 *   **Voice Cloning:** XTTS v2 offers robust voice cloning capabilities, which is a key feature for the project's goal of preserving original speaker characteristics. The `speaker_wav_path` is converted to a compatible WAV format to ensure XTTS v2 can process it correctly.
 *   **Justification:** A hybrid approach combining XTTS v2 for supported languages (including Czech as a proxy for Slovak) and `pyttsx3` for direct Slovak synthesis provides the best balance of voice cloning capability, language coverage, and real-time performance within the current technical constraints.
 
+### 2.4. System Architecture Overview
+
+The system is designed as a client-server application, with a Python-based backend handling the core translation pipeline and a web-based frontend providing the user interface. Communication between the frontend and backend is facilitated by WebSockets for real-time data exchange.
+
+```mermaid
+graph TD
+    subgraph Frontend (Web UI)
+        A[User Microphone Input] --> B(Web Audio API)
+        B --> C{Audio Chunking & Encoding}
+        C --> D(WebSocket Client)
+        D -- Real-time Audio Chunks --> E(FastAPI Backend)
+        E -- Transcription/Translation/Metrics --> F(WebSocket Client)
+        F --> G{UI Update Logic}
+        G --> H[Transcription Display]
+        G --> I[Translation Display]
+        G --> J[Audio Level Indicator]
+        K[Language/Model Selectors] --> D
+    end
+
+    subgraph Backend (FastAPI Server)
+        E(FastAPI Backend) --> L{WebTranslationPipeline}
+        L --> M(Voice Activity Detection - VAD)
+        M --> N(Speech-to-Text - STT)
+        N --> O(Machine Translation - MT)
+        O --> P(Text-to-Speech - TTS)
+        P --> Q(Audio Output - Speakers)
+        P --> R(Audio Output - BlackHole 2ch)
+        L -- Dynamic Model Re-initialization --> N
+        L -- Dynamic Model Re-initialization --> O
+        L -- Dynamic Model Re-initialization --> P
+    end
+
+
+**Data Flow Description:**
+
+1.  **User Input**: The user's speech is captured by the microphone in the web browser.
+2.  **Frontend Processing**: The Web Audio API processes the raw audio, chunks it into small segments, and encodes it.
+3.  **WebSocket Communication (Frontend to Backend)**: The encoded audio chunks are sent in real-time via a WebSocket connection to the FastAPI backend. UI controls (language/model selectors) also send configuration updates via WebSocket.
+4.  **Backend Processing (`WebTranslationPipeline`)**:
+    *   **Voice Activity Detection (VAD)**: Incoming audio chunks are first processed by VAD to detect speech segments, filtering out silence.
+    *   **Speech-to-Text (STT)**: Detected speech segments are sent to the `faster-whisper` module for transcription into the source language.
+    *   **Machine Translation (MT)**: The transcribed text is then passed to the `MarianMT` module (which may use `Google Translate` internally) for translation into the target language.
+    *   **Text-to-Speech (TTS)**: The translated text is synthesized into speech using the `Coqui XTTS v2` module (with `pyttsx3` as a fallback for unsupported languages like Slovak).
+    *   **Dynamic Model Re-initialization**: When language or TTS model settings are changed in the UI, the `WebTranslationPipeline` dynamically re-initializes the STT, MT, and TTS modules with the new configurations.
+5.  **WebSocket Communication (Backend to Frontend)**:
+    *   Real-time audio level data is sent back to the frontend for the input level indicator.
+    *   Transcription results (from STT) and translation results (from MT) are sent to the frontend for display.
+    *   Final metrics (latency for STT, MT, TTS, and total) are also sent.
+6.  **Audio Output**: The synthesized translated speech is outputted simultaneously to:
+    *   The user's default speakers (for direct monitoring).
+    *   The "BlackHole 2ch" virtual audio device (for routing to online conference applications like Google Meet).
+7.  **UI Updates**: The frontend receives the transcription, translation, audio level, and metrics, updating the respective display areas and state indicators in real-time.
+
 ## 3. Real-time Pipeline Management and Jitsi Meet Integration
 
 ### 3.1. Pipeline Management
