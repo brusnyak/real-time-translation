@@ -295,7 +295,11 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsStatusText.textContent = 'Loading models (this may take ~1 minute on first run)...';
 
         try {
-            const response = await fetch(`${API_URL}/initialize`, { method: 'POST' });
+            const sourceLang = inputLanguageSelect.value;
+            const targetLang = outputLanguageSelect.value;
+            const ttsModel = ttsModelSelect.value;
+
+            const response = await fetch(`${API_URL}/initialize?source_lang=${sourceLang}&target_lang=${targetLang}&tts_model_choice=${ttsModel}`, { method: 'POST' });
             const data = await response.json();
 
             if (data.status === 'success') {

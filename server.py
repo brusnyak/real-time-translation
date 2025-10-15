@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 import threading
+import torch
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
@@ -20,10 +21,7 @@ from src.tts_module import TTSModule
 # --- Configuration ---
 UI_DIR = "ui"
 SAMPLE_RATE = 16000
-SOURCE_LANG = "en"
-TARGET_LANG = "cs"
-TTS_MODEL_CHOICE = "xtts_v2"
-SPEAKER_REFERENCE_PATH = "tests/My test speech_xtts_speaker.wav"
+SPEAKER_REFERENCE_PATH = "tests/My test speech_xtts_speaker.wav" # This can remain global or be passed if needed
 
 # --- FastAPI App Setup ---
 app = FastAPI()
@@ -84,8 +82,15 @@ class WebTranslationPipeline:
         
         # Initialize ML modules
         print("\n[LOADING] Initializing models (this takes ~1 minute on first run)...")
-        self.stt_module = STTModule(model_size="base", device="cpu", compute_type="int8")
-        self.mt_module = MTModule(source_lang=source_lang, target_lang=target_lang, device="mps")
+        self.stt_module = STTModule(model_size="base", device="cpu", compute_type="int8", language=self.source_lang)
+        
+        device = "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+        self.mt_module = MTModule(source_lang=source_lang, target_lang=target_lang, device=device)
+        
         self.tts_module = TTSModule(
             model_choice=self.tts_model_choice,
             speaker_reference_path=self.speaker_reference_path,
@@ -107,6 +112,39 @@ class WebTranslationPipeline:
             "tts_time": 0,
             "total_latency": 0
         }
+
+    async def update_language_models(self, source_lang: str, target_lang: str, tts_model_choice: str):
+        print(f"[PIPELINE] Updating language models to {source_lang} → {target_lang} with TTS model {tts_model_choice}...")
+        self.source_lang = source_lang
+        self.target_lang = target_lang
+        self.tts_model_choice = tts_model_choice
+
+        # Re-initialize STT module
+        print("[LOADING] Re-initializing STT model...")
+        self.stt_module = STTModule(model_size="base", device="cpu", compute_type="int8", language=self.source_lang)
+        print("[LOADING] STT model re-initialized.")
+
+        # Re-initialize MT module
+        print("[LOADING] Re-initializing MT model...")
+        device = "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+        self.mt_module = MTModule(source_lang=self.source_lang, target_lang=self.target_lang, device=device)
+        print("[LOADING] MT model re-initialized.")
+
+        # Re-initialize TTS module
+        print("[LOADING] Re-initializing TTS model...")
+        self.tts_module = TTSModule(
+            model_choice=self.tts_model_choice,
+            speaker_reference_path=self.speaker_reference_path,
+            speaker_language=self.target_lang, # Ensure TTS uses the updated target_lang
+            device="cpu",
+            skip_warmup=False
+        )
+        print("[LOADING] TTS model re-initialized.")
+        print("[PIPELINE] Language models updated successfully.")
     
     def _find_device_id(self, device_name):
         """Find audio device by name."""
@@ -362,15 +400,23 @@ class WebTranslationPipeline:
 
 # --- API Endpoints ---
 
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query # Import Query
+
+# ... (rest of the file) ...
+
 @app.post("/initialize")
-async def initialize_pipeline():
+async def initialize_pipeline(
+    source_lang: str = Query("en"),
+    target_lang: str = Query("cs"),
+    tts_model_choice: str = Query("xtts_v2")
+):
     global translation_pipeline, pipeline_initialized
     if not pipeline_initialized:
         try:
             translation_pipeline = WebTranslationPipeline(
-                source_lang=SOURCE_LANG,
-                target_lang=TARGET_LANG,
-                tts_model_choice=TTS_MODEL_CHOICE,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                tts_model_choice=tts_model_choice,
                 speaker_reference_path=SPEAKER_REFERENCE_PATH
             )
             pipeline_initialized = True
@@ -429,12 +475,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json({"type": "status", "message": "Processing stopped."})
                     print("[WEBSOCKET] Processing stopped")
                 elif data["type"] == "config_update":
-                    if "source_lang" in data:
-                        translation_pipeline.source_lang = data["source_lang"]
-                    if "target_lang" in data:
-                        translation_pipeline.target_lang = data["target_lang"]
-                    if "tts_model_choice" in data:
-                        translation_pipeline.tts_model_choice = data["tts_model_choice"]
+                    source_lang = data.get("source_lang", translation_pipeline.source_lang)
+                    target_lang = data.get("target_lang", translation_pipeline.target_lang)
+                    tts_model_choice = data.get("tts_model_choice", translation_pipeline.tts_model_choice)
+                    
+                    await translation_pipeline.update_language_models(source_lang, target_lang, tts_model_choice)
                     print(f"[WEBSOCKET] Updated config: {data}")
                     await websocket.send_json({"type": "status", "message": "Configuration updated."})
             

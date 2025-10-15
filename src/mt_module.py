@@ -17,9 +17,9 @@ class MTModule:
         self.source_lang = source_lang
         self.target_lang = target_lang
         self.device = device
-        self.model_name = "Helsinki-NLP/opus-mt-en-sk"
+        self.model_name = f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}"
         
-        print(f"[MT] Initializing MarianMT: {source_lang} -> {target_lang}")
+        print(f"[MT] Initializing MarianMT: {self.model_name}")
         print(f"[MT] Device: {self.device}")
         
         start_time = time.time()
