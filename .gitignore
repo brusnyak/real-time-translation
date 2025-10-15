@@ -28,3 +28,6 @@ Thumbs.db
 # Generated research outputs and temporary files
 research/test_*/
 update*.txt
+
+# security
+.pem
