@@ -1,0 +1,202 @@
+(venv-coqui) yegor@tourist BP copy % python3 server.py
+/Users/yegor/Documents/STU/BP copy/venv-coqui/lib/python3.10/site-packages/webrtcvad.py:1: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+INFO:     Started server process [24446]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on https://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52759 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52759 - "GET /style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52761 - "GET /script.js HTTP/1.1" 200 OK
+[PIPELINE] Initializing web translation pipeline with VAD...
+[PIPELINE] en → cs
+[PIPELINE] VAD frame duration: 20ms
+[PIPELINE] Silence timeout: 1.0s
+
+[LOADING] Initializing models (this takes ~1 minute on first run)...
+Initializing Faster-Whisper model: base on device: cpu with compute type: int8...
+Faster-Whisper model initialized in 0.627s.
+[MT] Initializing MarianMT: Helsinki-NLP/opus-mt-en-cs
+[MT] Device: mps
+[MT] Model loaded on MPS (Metal Performance Shaders)
+[MT] Model initialized in 2.812s
+[MT] Warm up first call takes ~3.8s, subsequent calls ~0.6-0.8s
+[TTS] Pre-loading TTS model tts_models/en/ljspeech/vits (choice: vits)...
+ > Downloading model to /Users/yegor/Library/Application Support/tts/tts_models--en--ljspeech--vits
+ > Model's license - apache 2.0
+ > Check https://choosealicense.com/licenses/apache-2.0/ for more info.
+ > Using model: vits
+ > Setting up Audio Processor...
+ | > sample_rate:22050
+ | > resample:False
+ | > num_mels:80
+ | > log_func:np.log10
+ | > min_level_db:0
+ | > frame_shift_ms:None
+ | > frame_length_ms:None
+ | > ref_level_db:None
+ | > fft_size:1024
+ | > power:None
+ | > preemphasis:0.0
+ | > griffin_lim_iters:None
+ | > signal_norm:None
+ | > symmetric_norm:None
+ | > mel_fmin:0
+ | > mel_fmax:None
+ | > pitch_fmin:None
+ | > pitch_fmax:None
+ | > spec_gain:20.0
+ | > stft_pad_mode:reflect
+ | > max_norm:1.0
+ | > clip_norm:True
+ | > do_trim_silence:False
+ | > trim_db:60
+ | > do_sound_norm:False
+ | > do_amp_to_db_linear:True
+ | > do_amp_to_db_mel:True
+ | > do_rms_norm:False
+ | > db_level:None
+ | > stats_path:None
+ | > base:10
+ | > hop_length:256
+ | > win_length:1024
+[TTS] Loaded in 53.103s.
+[TTS] vits selected. Speaker reference path is not applicable for generic models.
+[TTS] Warming up vits model...
+[TTS] Warmup failed (non-critical): Model is not multi-lingual but `language` is provided.
+[LOADING] All models loaded successfully.
+
+INFO:     127.0.0.1:52778 - "POST /initialize?source_lang=en&target_lang=cs&tts_model_choice=vits HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52806 - "WebSocket /ws" [accepted]
+[WEBSOCKET] Client connected: Address(host='127.0.0.1', port=52806)
+INFO:     connection open
+[PIPELINE] Starting audio processing loop...
+[WEBSOCKET] Processing started
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 12 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 64 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 76 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 89 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 102 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 115 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 128 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 140 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 153 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 166 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 179 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 192 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 204 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 217 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 230 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 256 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 268 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 281 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 294 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 307 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 320 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 332 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 371 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 384 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 396 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 409 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 448 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 460 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 473 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Silence timeout (1.25s). Processing 537 frames...
+
+[PROCESSING] 171840 samples (10.7s)
+Transcribing audio with Faster-Whisper (language: en)...
+  [STT] 1.49s → 'Just, just, just, can you hear me?'
+[MT] Translation in 1.091s
+  [MT]  1.09s → 'Jen, jen, jen, slyšíš mě?'
+[TTS] Synthesizing 1 chunks with vits...
+[TTS] Attempting to synthesize chunk: 'Jen, jen, jen, slyšíš mě?...' using vits
+[TTS] Synthesis failed for 'Jen, jen, jen, slyšíš mě?...': Model is not multi-lingual but `language` is provided.
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[TTS] Chunk 0 returned None (synthesis failed or empty)
+[TTS] No valid chunks produced after concurrent synthesis.
+  [TTS] 0.00s
+  [OUTPUT] Error: Invalid file: None
+  [TOTAL] 2.58s
+[VAD] Speech detected, buffer: 128 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 154 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 192 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 205 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 218 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 231 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 269 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 282 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 295 frames
+[WEBSOCKET] Received audio chunk: 4096 samples
+[VAD] Speech detected, buffer: 307 frames
+^CINFO:     Shutting down
+[WEBSOCKET ERROR] Cannot call "receive" once a disconnect message has been received.
+INFO:     connection closed
+[PIPELINE] Stopped audio processing loop.
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [24446]
+(venv-coqui) yegor@tourist BP copy % 

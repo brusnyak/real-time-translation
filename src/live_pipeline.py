@@ -11,9 +11,18 @@ import webrtcvad
 from scipy import signal
 import datetime # Added import for datetime
 import torch # Added import for torch to check GPU availability
+import warnings # Added import for warnings
 
 # Add the parent directory of 'src' to sys.path to allow absolute imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Suppress the specific pkg_resources deprecation warning from webrtcvad
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+    module="webrtcvad"
+)
 
 from src.stt_module import STTModule
 from src.mt_module import MTModule
@@ -35,6 +44,7 @@ class LivePipeline:
         target_lang="sk",
         speaker_reference_path="tests/My test speech_xtts_speaker.wav",
         speaker_language="en",
+        tts_model_choice="xtts_v2", # Added tts_model_choice parameter
     ):
         # Audio configuration
         self.input_sample_rate = input_sample_rate
@@ -71,6 +81,7 @@ class LivePipeline:
         self.mt = MTModule(device=device)
         # TTSModule also has MPS issues with attention mask, so force CPU for now
         self.tts = TTSModule(
+            model_choice=tts_model_choice, # Pass the model choice
             speaker_reference_path=speaker_reference_path,
             speaker_language=speaker_language,
             device="cpu",
@@ -120,7 +131,8 @@ class LivePipeline:
             mono = signal.resample(mono, num_output_samples)
         
         # Apply a gain factor (if needed, adjust this value based on testing)
-        gain_factor = 5.0 # Start with a moderate gain
+        # Reduced gain to mitigate feedback issues. Adjust as needed.
+        gain_factor = 1.0
         mono *= gain_factor
         mono = np.clip(mono, -1.0, 1.0) # Re-clip after applying gain
 
@@ -289,6 +301,7 @@ if __name__ == "__main__":
             vad_aggressiveness=2,
             speaker_reference_path="tests/My test speech_xtts_speaker.wav",
             speaker_language="en",
+            tts_model_choice="xtts_v2", # Default for main execution
         )
         pipeline.start()
     except KeyboardInterrupt:

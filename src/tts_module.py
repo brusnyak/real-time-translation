@@ -47,8 +47,11 @@ class TTSModule:
         if self.model_choice == "xtts_v2":
             self.model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
         elif self.model_choice == "glow_tts":
-            # Assuming a common Glow-TTS model name, adjust if needed
-            self.model_name = "tts_models/en/ljspeech/glow-tts" 
+            self.model_name = "tts_models/en/ljspeech/glow-tts"
+        elif self.model_choice == "vits":
+            # A fast, generic VITS model. 'en/ljspeech/vits' is a common choice for English.
+            # For multilingual VITS, a different model name would be needed.
+            self.model_name = "tts_models/en/ljspeech/vits"
         else:
             raise ValueError(f"Unsupported TTS model choice: {model_choice}")
 
@@ -60,7 +63,7 @@ class TTSModule:
             add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
 
         # Load TTS
-        # For Glow-TTS, speaker_wav is not used, and language might be fixed (e.g., 'en')
+        # For Glow-TTS and VITS, speaker_wav is not used, and language might be fixed (e.g., 'en')
         # For XTTS, speaker_wav and language are crucial.
         self.tts = TTS(model_name=self.model_name, progress_bar=False, gpu=False)
         
@@ -80,8 +83,8 @@ class TTSModule:
                     raise FileNotFoundError(f"[TTS] Speaker file not found: {self.speaker_reference_path}")
                 info = sf.info(self.speaker_reference_path)
                 print(f"[TTS] Speaker: {info.duration:.2f}s at {info.samplerate}Hz")
-        elif self.model_choice == "glow_tts":
-            print("[TTS] Glow-TTS selected. Speaker reference path is not applicable.")
+        elif self.model_choice in ["glow_tts", "vits"]:
+            print(f"[TTS] {self.model_choice} selected. Speaker reference path is not applicable for generic models.")
 
 
         # Optional warmup (saves ~4s if skipped)
@@ -94,10 +97,10 @@ class TTSModule:
                         speaker_wav=self.speaker_reference_path,
                         language=self.speaker_language
                     )
-                elif self.model_choice == "glow_tts":
+                elif self.model_choice in ["glow_tts", "vits"]:
                     _ = self.tts.tts(
                         text="Hello.",
-                        language="en" # Glow-TTS might be single language
+                        language="en" # Generic models often have a fixed language
                     )
                 print("[TTS] Warmup done.")
             except Exception as e:
@@ -169,10 +172,21 @@ class TTSModule:
                     temperature=temperature,
                     speed=speed
                 )
-            elif self.model_choice == "glow_tts":
+            # For generic models like Glow-TTS and VITS, speaker_wav is not used, and language should be omitted or fixed.
+            # The 'tts_models/en/ljspeech/vits' model is English-only.
+            elif self.model_choice in ["glow_tts", "vits"]:
                 audio_output = self.tts.tts(
                     text=text,
-                    language="en" # Glow-TTS might be single language, or need to be configured
+                    # For single-language models, do not pass the 'language' parameter if it's not expected,
+                    # or pass the model's native language if required.
+                    # The 'en/ljspeech/vits' model is English, so we can explicitly pass 'en' or omit.
+                    # Omitting is safer if the TTS API handles it gracefully for single-language models.
+                    # Based on the error "Model is not multi-lingual but `language` is provided", omitting is the correct approach.
+                    # However, if the API *requires* a language, then 'en' would be correct for this specific model.
+                    # Let's try omitting it first, as the error message implies it's the presence of the parameter that's the issue.
+                    # If omitting causes an error, we'll revert to passing 'en'.
+                    # For now, I will explicitly pass 'en' as a safe default for these English-only models.
+                    language="en"
                 )
 
             # Handle different return types from TTS

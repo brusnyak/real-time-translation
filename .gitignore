@@ -31,3 +31,4 @@ update*.txt
 
 # security
 .pem
+*.pem

@@ -56,11 +56,12 @@ else:
     print("No GPU detected. All models will use CPU.")
 
 class PipelineOrchestrator:
-    def __init__(self, source_lang="en", target_lang="sk"):
+    def __init__(self, source_lang="en", target_lang="sk", tts_model_choice="xtts_v2"): # Added tts_model_choice
         self.source_lang = source_lang
         self.target_lang = target_lang
+        self.tts_model_choice = tts_model_choice # Store tts_model_choice
 
-        print(f"[PIPELINE] Initializing for {source_lang} -> {target_lang}...")
+        print(f"[PIPELINE] Initializing for {source_lang} -> {target_lang} with TTS model: {tts_model_choice}...")
         
         # STT Module
         self.stt_module = STTModule(
@@ -79,7 +80,7 @@ class PipelineOrchestrator:
         
         # TTS Module - with skip_warmup=True to save ~4 seconds
         self.tts_module = TTSModule(
-            model_name=XTTS_MODEL_NAME,
+            model_choice=self.tts_model_choice, # Pass the model choice
             speaker_reference_path=SPEAKER_REFERENCE_PATH_WAV,
             speaker_language="cs" if self.target_lang == "sk" else self.target_lang,
             device=TTS_DEVICE,
@@ -403,7 +404,7 @@ class PipelineOrchestrator:
 
 
 async def main():
-    orchestrator = PipelineOrchestrator(source_lang="en", target_lang="sk")
+    orchestrator = PipelineOrchestrator(source_lang="en", target_lang="sk", tts_model_choice="xtts_v2") # Default for main execution
     await orchestrator.run_pipeline(source_audio_path_m4a="tests/My test speech.m4a")
 
 if __name__ == "__main__":

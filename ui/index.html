@@ -62,8 +62,9 @@
               title="Select TTS Model"
               aria-label="Select Text-to-Speech model"
             >
-              <option value="xtts_v2">XTTS v2</option>
-              <option value="glow_tts">Glow-TTS (fast option)</option>
+              <option value="xtts_v2">XTTS v2 (Voice Cloning)</option>
+              <option value="glow_tts">Glow-TTS (Fast, Generic)</option>
+              <option value="vits">VITS (Fast, Generic)</option>
             </select>
           </div>
         </div>
@@ -180,6 +181,12 @@
 
       <div class="settings-status" role="status" aria-live="polite">
         <span id="settingsStatusText" class="metric-value"></span>
+      </div>
+      <div class="log-container" role="log" aria-live="polite" aria-atomic="false">
+        <h3>Activity Log</h3>
+        <div id="activityLog" class="activity-log-box" tabindex="0">
+          <!-- Log messages will be appended here -->
+        </div>
       </div>
     </div>
 

@@ -22,7 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const stateListening = document.getElementById('stateListening');
     const stateTranslating = document.getElementById('stateTranslating');
     const stateSpeaking = document.getElementById('stateSpeaking');
-    const settingsStatusText = document.getElementById('settingsStatusText');
+    const settingsStatusText = document.getElementById('settingsStatusText'); // Existing status text
+    const activityLog = document.getElementById('activityLog'); // New activity log container
 
     // --- Global State ---
     let websocket = null;
@@ -115,7 +116,20 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStateIcon(stateListening, false);
         updateStateIcon(stateTranslating, false);
         updateStateIcon(stateSpeaking, false);
-        settingsStatusText.textContent = '';
+        settingsStatusText.textContent = ''; // Clear existing status text
+        activityLog.innerHTML = ''; // Clear activity log
+    }
+
+    function appendLog(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('p');
+        logEntry.classList.add('log-entry', `log-${type}`);
+        logEntry.innerHTML = `[${timestamp}] ${escapeHtml(message)}`;
+        activityLog.prepend(logEntry); // Add to top
+        // Optional: Limit log entries to prevent UI clutter
+        while (activityLog.children.length > 50) {
+            activityLog.removeChild(activityLog.lastChild);
+        }
     }
 
     // --- WebSocket Handling ---
@@ -131,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         websocket.onopen = () => {
             console.log('WebSocket connected.');
             updateStatus('on', 'Connected');
+            appendLog('WebSocket connected.', 'success');
         };
 
         websocket.onmessage = (event) => {
@@ -138,42 +153,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = JSON.parse(event.data);
 
                 if (data.type === 'audio_level') {
-                    // server should send { type: 'audio_level', level: <0..1> }
                     setInputLevel(typeof data.level === 'number' ? data.level : 0);
                 } else if (data.type === 'transcription_result') {
                     if (data.transcribed) {
                         transcriptionBox.innerHTML = `<p>${escapeHtml(data.transcribed)}</p>`;
                         sttTime.textContent = `${(data.metrics.stt_time || 0).toFixed(2)}s`;
-                        updateStateIcon(stateTranslating, true); // Indicate translation is in progress
+                        updateStateIcon(stateTranslating, true);
                     }
                 } else if (data.type === 'translation_result') {
                     if (data.translated) {
                         translationBox.innerHTML = `<p>${escapeHtml(data.translated)}</p>`;
                         mtTime.textContent = `${(data.metrics.mt_time || 0).toFixed(2)}s`;
-                        updateStateIcon(stateTranslating, false); // Translation finished
-                        updateStateIcon(stateSpeaking, true); // Indicate speaking is in progress
+                        updateStateIcon(stateTranslating, false);
+                        updateStateIcon(stateSpeaking, true);
                     }
                 } else if (data.type === 'final_metrics') {
                     if (data.metrics) {
                         ttsTime.textContent = `${(data.metrics.tts_time || 0).toFixed(2)}s`;
                         totalTime.textContent = `${(data.metrics.total_latency || 0).toFixed(2)}s`;
-                        updateStateIcon(stateSpeaking, false); // Speaking finished
+                        updateStateIcon(stateSpeaking, false);
                     }
                 } else if (data.type === 'status') {
-                    settingsStatusText.textContent = data.message || '';
+                    // Backend status messages go to the new activity log
+                    appendLog(data.message || '', 'info');
                 } else if (data.status === 'error') {
                     console.error('Server Error:', data.message);
-                    settingsStatusText.textContent = `Error: ${data.message}`;
+                    appendLog(`Server Error: ${data.message}`, 'error');
+                    settingsStatusText.textContent = `Error: ${data.message}`; // Keep critical error in settingsStatusText
                     stopRecording();
                 }
             } catch (error) {
                 console.error('Error parsing WebSocket message:', error);
+                appendLog(`Error parsing WebSocket message: ${error.message}`, 'error');
             }
         };
 
         websocket.onclose = () => {
             console.log('WebSocket disconnected.');
             updateStatus('off', 'Disconnected');
+            appendLog('WebSocket disconnected.', 'warning');
             stopRecording();
         };
 
@@ -181,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('WebSocket Error:', error);
             settingsStatusText.textContent = 'WebSocket connection error.';
             updateStatus('error', 'Error');
+            appendLog(`WebSocket Error: ${error.message}`, 'error');
             stopRecording();
         };
     }
@@ -292,12 +311,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         initBtn.disabled = true;
         updateStatus('prepping', 'Initializing Models...');
-        settingsStatusText.textContent = 'Loading models (this may take ~1 minute on first run)...';
+        appendLog('Initializing models...', 'info');
+        settingsStatusText.textContent = 'Loading models (this may take ~1 minute on first run)...'; // Keep this for prominent display
 
         try {
             const sourceLang = inputLanguageSelect.value;
             const targetLang = outputLanguageSelect.value;
             const ttsModel = ttsModelSelect.value;
+
+            appendLog(`Attempting to initialize pipeline with: Source=${sourceLang.toUpperCase()}, Target=${targetLang.toUpperCase()}, TTS Model=${ttsModel}.`, 'info');
 
             const response = await fetch(`${API_URL}/initialize?source_lang=${sourceLang}&target_lang=${targetLang}&tts_model_choice=${ttsModel}`, { method: 'POST' });
             const data = await response.json();
@@ -307,16 +329,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 startBtn.disabled = false;
                 updateStatus('off', 'Ready');
                 settingsStatusText.textContent = data.message;
+                appendLog(`Pipeline initialized successfully: ${data.message}`, 'success');
                 connectWebSocket();
             } else {
                 settingsStatusText.textContent = `Initialization failed: ${data.message}`;
                 updateStatus('error', 'Init Error');
+                appendLog(`Initialization failed: ${data.message}`, 'error');
                 initBtn.disabled = false;
             }
         } catch (error) {
             console.error('Initialization API error:', error);
             settingsStatusText.textContent = `Initialization failed: ${error.message}`;
             updateStatus('error', 'Init Error');
+            appendLog(`Initialization API error: ${error.message}`, 'error');
             initBtn.disabled = false;
         }
     });
@@ -333,23 +358,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 tts_model_choice: ttsModelSelect.value
             };
             websocket.send(JSON.stringify(config));
-            settingsStatusText.textContent = 'Configuration updated.';
+            appendLog(`Configuration updated: Source=${config.source_lang.toUpperCase()}, Target=${config.target_lang.toUpperCase()}, TTS Model=${config.tts_model_choice}.`, 'info');
+            settingsStatusText.textContent = 'Configuration updated.'; // Keep this for immediate feedback
         } else {
             settingsStatusText.textContent = 'Not connected to server. Cannot update config.';
+            appendLog('Not connected to server. Cannot update config.', 'warning');
         }
     }
 
     inputLanguageSelect.addEventListener('change', (event) => {
         inputLanguageBadge.textContent = event.target.value.toUpperCase();
+        appendLog(`Input language changed to ${event.target.value.toUpperCase()}.`, 'info');
         sendConfigUpdate();
     });
 
     outputLanguageSelect.addEventListener('change', (event) => {
         outputLanguageBadge.textContent = event.target.value.toUpperCase();
+        appendLog(`Output language changed to ${event.target.value.toUpperCase()}.`, 'info');
         sendConfigUpdate();
     });
 
-    ttsModelSelect.addEventListener('change', sendConfigUpdate);
+    ttsModelSelect.addEventListener('change', (event) => {
+        appendLog(`TTS Model changed to ${event.target.value}.`, 'info');
+        sendConfigUpdate();
+    });
 
     // Basic HTML-escape helper to avoid injection when updating innerHTML
     function escapeHtml(unsafe) {
